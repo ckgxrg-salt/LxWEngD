@@ -33,7 +33,8 @@ fn open(filename: &PathBuf, search_path: &Path) -> Result<String, String> {
     }
 
     // Relative to default without extension
-    let real_path = search_path.to_path_buf();
+    let mut real_path = search_path.to_path_buf();
+    real_path.push(filename);
     let mut temp = real_path.into_os_string();
     temp.push(".playlist");
     let real_path = PathBuf::from(temp);
@@ -61,11 +62,24 @@ mod tests {
 
     #[test]
     fn open_playlist() {
-        let default = open(
-            &PathBuf::from("default.playlist"),
+        // Fully qualified path
+        let full = open(
+            &PathBuf::from("./playlists/open_test.playlist"),
+            &PathBuf::from("Nothing"),
+        )
+        .unwrap();
+        assert_eq!(full, "=)\n");
+
+        // No extension
+        let extless = open(&PathBuf::from("open_test"), &PathBuf::from("playlists")).unwrap();
+        assert_eq!(extless, "=)\n");
+
+        // With extension
+        let extful = open(
+            &PathBuf::from("open_test.playlist"),
             &PathBuf::from("playlists"),
         )
         .unwrap();
-        assert_eq!(default, "Nothing here\n");
+        assert_eq!(extful, "=)\n");
     }
 }
