@@ -1,4 +1,5 @@
 # linux-wallpaperengine Daemon
+# This project is still working in progress...
 [linux-wallpaperengine](https://github.com/Almamu/linux-wallpaperengine) is an awesome project that provides Wallpaper Engine functionality on linux.   
 However, that project is more like implementation of the "core", which means there are no playlist support, etc.   
 
