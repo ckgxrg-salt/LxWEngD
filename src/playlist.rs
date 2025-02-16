@@ -1,34 +1,45 @@
 //! This module interprets playlist files
 
 use std::env;
-use std::fs;
+use std::error::Error;
+use std::fmt::Display;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
-fn config_dir() -> Result<PathBuf, String> {
+#[derive(Debug, PartialEq)]
+pub enum PlaylistError {
+    DirectoryNotFound,
+    FileNotFound,
+}
+impl Error for PlaylistError {}
+impl Display for PlaylistError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TODO")
+    }
+}
+
+pub fn config_dir() -> Result<PathBuf, PlaylistError> {
     let default;
     if let Ok(value) = env::var("XDG_CONFIG_HOME") {
         default = PathBuf::from(value + "/lxwengd");
     } else if let Ok(value) = env::var("HOME") {
         default = PathBuf::from(value + "/.config/lxwengd");
     } else {
-        return Err(
-            "Cannot find the playlist directory, consider indicating the fully qualified path."
-                .to_string(),
-        );
+        return Err(PlaylistError::DirectoryNotFound);
     }
     Ok(default)
 }
 
-fn open(filename: &PathBuf, search_path: &Path) -> Result<String, String> {
+pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> {
     // Fully qualified path
-    if let Ok(content) = fs::read_to_string(filename) {
+    if let Ok(content) = File::open(filename) {
         return Ok(content);
     }
 
     // Relative to default with extension
     let mut real_path = search_path.to_path_buf();
     real_path.push(filename);
-    if let Ok(content) = fs::read_to_string(real_path) {
+    if let Ok(content) = File::open(real_path) {
         return Ok(content);
     }
 
@@ -38,15 +49,17 @@ fn open(filename: &PathBuf, search_path: &Path) -> Result<String, String> {
     let mut temp = real_path.into_os_string();
     temp.push(".playlist");
     let real_path = PathBuf::from(temp);
-    if let Ok(content) = fs::read_to_string(real_path) {
+    if let Ok(content) = File::open(real_path) {
         return Ok(content);
     }
 
-    Err("Cannot find the playlist file.".to_string())
+    Err(PlaylistError::FileNotFound)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::Read;
+
     use super::*;
 
     #[test]
@@ -61,25 +74,35 @@ mod tests {
     }
 
     #[test]
-    fn open_playlist() {
+    fn find_playlist() {
+        let mut content: String = String::from("");
         // Fully qualified path
-        let full = open(
+        find(
             &PathBuf::from("./playlists/open_test.playlist"),
             &PathBuf::from("Nothing"),
         )
+        .unwrap()
+        .read_to_string(&mut content)
         .unwrap();
-        assert_eq!(full, "=)\n");
+        assert_eq!(content, "=)\n");
 
         // No extension
-        let extless = open(&PathBuf::from("open_test"), &PathBuf::from("playlists")).unwrap();
-        assert_eq!(extless, "=)\n");
+        content.clear();
+        find(&PathBuf::from("open_test"), &PathBuf::from("playlists"))
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        assert_eq!(content, "=)\n");
 
         // With extension
-        let extful = open(
+        content.clear();
+        find(
             &PathBuf::from("open_test.playlist"),
             &PathBuf::from("playlists"),
         )
+        .unwrap()
+        .read_to_string(&mut content)
         .unwrap();
-        assert_eq!(extful, "=)\n");
+        assert_eq!(content, "=)\n");
     }
 }

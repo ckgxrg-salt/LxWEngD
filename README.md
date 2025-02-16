@@ -8,6 +8,7 @@ This project aims to provide a daemon that runs in the background and summons `l
 # Playlist file
 The playlist file is a plain text file that records what wallpaper to show, in what ways and for how long.   
 Playlist files usually resides in `$XDG_CONFIG_HOME/lxwengd` or `$HOME/.config/lxwengd` and have the extension `.playlist`.   
+If both "<filename>" and "<filename>.playlist" are found in the search path, the program prefers <filename>.playlist.   
 
 `#` may be used to comment in the file. Empty lines will be ignored.   
 

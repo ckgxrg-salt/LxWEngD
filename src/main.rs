@@ -1,5 +1,6 @@
 mod commands;
 mod playlist;
+mod runner;
 
 use clap::Parser;
 use std::path::PathBuf;
@@ -37,5 +38,6 @@ fn main() {
     } else {
         &PathBuf::from("default.playlist")
     };
-    println!("{:?}", playlist);
+    let text = playlist::find(playlist, &playlist::config_dir().unwrap()).unwrap();
+    println!("{:?}", text);
 }

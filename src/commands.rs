@@ -1,10 +1,12 @@
 //! Define commands the daemon can identify
 
+use std::error::Error;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Debug, PartialEq)]
-enum Command {
+pub enum Command {
     // id, duration
     Wallpaper(u32, Duration),
     // duration
@@ -12,21 +14,27 @@ enum Command {
     // end
     End,
     // location, number
-    Goto(u32, u32),
+    Goto(usize, u32),
     // path
     Replace(PathBuf),
     Summon(PathBuf),
 }
 
 #[derive(Debug, PartialEq)]
-enum ParseError {
+pub enum ParseError {
     CommandNotFound,
     NotEnoughArguments,
     InvalidArgument,
 }
+impl Error for ParseError {}
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TODO")
+    }
+}
 
 // Converts literal commands into tuples
-fn identify(str: &str) -> Result<Command, ParseError> {
+pub fn identify(str: &str) -> Result<Command, ParseError> {
     let mut segment = str.split_whitespace();
     match segment.next() {
         Some("wait") => {
@@ -40,7 +48,7 @@ fn identify(str: &str) -> Result<Command, ParseError> {
             let loc = segment
                 .next()
                 .ok_or(ParseError::NotEnoughArguments)?
-                .parse::<u32>()
+                .parse::<usize>()
                 .map_err(|_| ParseError::InvalidArgument)?;
             let count = segment
                 .next()
