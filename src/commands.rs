@@ -18,6 +18,7 @@ pub enum Command {
     // path
     Replace(PathBuf),
     Summon(PathBuf),
+    Monitor(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -75,6 +76,15 @@ pub fn identify(str: &str) -> Result<Command, ParseError> {
                 .parse::<PathBuf>()
                 .map_err(|_| ParseError::InvalidArgument)?;
             Ok(Command::Summon(path))
+        }
+
+        Some("monitor") => {
+            let name = segment
+                .next()
+                .ok_or(ParseError::NotEnoughArguments)?
+                .parse::<String>()
+                .map_err(|_| ParseError::InvalidArgument)?;
+            Ok(Command::Monitor(name))
         }
 
         // Might be a wallpaper

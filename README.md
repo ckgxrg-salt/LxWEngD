@@ -69,4 +69,4 @@ Also, it does not check whether there's another wallpaper daemon running, even a
 
 ## linux-wallpaperengine is missing assets (CAssetLoadException)
 This may happen if your Steam installation (or anything that contains the assets directory `linux-wallpaperengine` requires) is not standard.   
-LxWEngd assumes your Steam installation to be in `$XDG_DATA_HOME/Steam` or `$HOME/.local/share/Steam`, otherwise you will need to pass the path to the **assets directory** explicitly.   
+You might need to pass the path to the **assets directory** explicitly.   

@@ -1,6 +1,7 @@
 mod commands;
 mod playlist;
 mod runner;
+mod wallpaper;
 
 use clap::Parser;
 use std::path::PathBuf;
@@ -19,10 +20,18 @@ struct Cli {
     #[arg{
         short = 'b',
         long = "binary",
-        value_name = "PATH-TO-BINARY",
+        value_name = "PATH",
         help = "Path to the linux-wallpaperengine binary, will search in $PATH if not given."
     }]
     binary: Option<PathBuf>,
+
+    #[arg{
+        short = 'a',
+        long = "assets-path",
+        value_name = "PATH",
+        help = "Path to Wallpaper Engine assets."
+    }]
+    assets_path: Option<PathBuf>,
 
     #[arg(
         long = "dry-run",
@@ -38,6 +47,11 @@ fn main() {
     } else {
         &PathBuf::from("default.playlist")
     };
-    let text = playlist::find(playlist, &playlist::config_dir().unwrap()).unwrap();
-    println!("{:?}", text);
+    let assets_path = parsed.assets_path.as_deref();
+
+    let mut runner = runner::Runner::new(playlist.to_owned(), playlist::config_dir().unwrap());
+    if let Some(value) = assets_path {
+        runner.assets_path(value);
+    }
+    runner.run().unwrap();
 }

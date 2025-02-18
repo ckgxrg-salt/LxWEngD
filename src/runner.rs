@@ -2,17 +2,21 @@
 
 use crate::commands::{identify, Command};
 use crate::playlist;
+use crate::wallpaper;
 use std::error::Error;
 use std::fmt::Display;
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
-struct Runner {
+pub struct Runner<'a> {
     file: PathBuf,
     search_path: PathBuf,
+    assets_path: Option<&'a Path>,
     index: usize,
-    command: Command,
     stored_gotos: Vec<StoredGoto>,
+    monitor: Option<String>,
 }
 
 struct StoredGoto {
@@ -21,7 +25,9 @@ struct StoredGoto {
 }
 
 #[derive(Debug, PartialEq)]
-enum RuntimeError {}
+pub enum RuntimeError {
+    EngineDied,
+}
 impl Error for RuntimeError {}
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -29,27 +35,36 @@ impl Display for RuntimeError {
     }
 }
 
-impl Runner {
+impl<'a> Runner<'a> {
     /// Creates a new Runner that operates the given playlist.
     pub fn new(file: PathBuf, search_path: PathBuf) -> Self {
         Self {
             file,
             search_path,
+            assets_path: None,
             // This is the index of array, not the line number
             index: 0,
             // Just a placeholder
-            command: Command::End,
             stored_gotos: Vec::new(),
+            monitor: None,
         }
+    }
+
+    /// Sets the assets path of this runner
+    pub fn assets_path(&mut self, path: &'a Path) -> &mut Self {
+        self.assets_path = Some(path);
+        self
     }
 
     /// The thread main function
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let raw_file = playlist::find(&self.file, &self.search_path)?;
+        let mut raw_file = playlist::find(&self.file, &self.search_path)?;
+        let mut content = String::new();
         let lines: Vec<String> = BufReader::new(&raw_file)
             .lines()
-            .filter(|line| line.as_ref().is_ok_and(|val| val.is_empty()))
-            .map(|line| line.unwrap())
+            .map(|line| line.unwrap().trim().to_string())
+            .filter(|line| !line.is_empty())
+            .filter(|line| !line.starts_with("#"))
             .collect();
         loop {
             let current_line = if let Some(value) = lines.get(self.index) {
@@ -67,34 +82,39 @@ impl Runner {
                 }
             };
             match cmd {
-                Command::Wallpaper(id, duration) => self.wallpaper(),
-                Command::Wait(duration) => self.wait(),
+                Command::Wallpaper(id, duration) => {
+                    let cmd = wallpaper::get_cmd(
+                        id,
+                        self.assets_path,
+                        self.monitor.as_ref().map(|x| x.as_str()),
+                    );
+                    wallpaper::summon(cmd, duration)?;
+                }
+                Command::Wait(duration) => thread::sleep(duration),
                 Command::Goto(line, count) => {
                     if count != 0 {
-                        self.goto(&line, &count);
+                        self.cache_goto(&line, &count);
                     }
                     self.index = line;
                     continue;
                 }
                 Command::Summon(path) => self.summon(),
                 Command::Replace(path) => self.replace(),
+                Command::Monitor(name) => self.monitor = Some(name),
                 Command::End => break Ok(()),
             }
         }
     }
 
-    fn wallpaper(&self) {}
-    fn wait(&self) {}
-
     fn search_cached_gotos(&self, line: &usize) -> Option<usize> {
-        for (index, each) in self.stored_gotos.iter().enumerate() {
-            if each.location == *line {
+        for (index, any) in self.stored_gotos.iter().enumerate() {
+            if any.location == *line {
                 return Some(index);
             }
         }
         None
     }
-    fn goto(&mut self, line: &usize, count: &u32) {
+    fn cache_goto(&mut self, line: &usize, count: &u32) {
         if let Some(index) = self.search_cached_gotos(line) {
             let existing = self.stored_gotos.get_mut(index).unwrap();
             if existing.remaining <= 1 {
@@ -110,6 +130,17 @@ impl Runner {
             self.stored_gotos.push(cached);
         }
     }
+
     fn summon(&self) {}
     fn replace(&self) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_goto() {
+        let instance = Runner::new(PathBuf::from("nothing"), PathBuf::from("nothing"));
+    }
 }
