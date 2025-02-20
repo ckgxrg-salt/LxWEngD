@@ -3,7 +3,7 @@
 use crate::runner::RuntimeError;
 use std::path::Path;
 use std::time::Duration;
-use subprocess::Exec;
+use subprocess::{Exec, NullFile};
 
 pub fn get_cmd(id: u32, assets_path: Option<&Path>, monitor: Option<&str>) -> Exec {
     let mut engine = Exec::cmd("linux-wallpaperengine");
@@ -15,7 +15,7 @@ pub fn get_cmd(id: u32, assets_path: Option<&Path>, monitor: Option<&str>) -> Ex
         // If invoked without --screen-root, linux-wallpaperengine rejects --bg
     }
     engine = engine.arg(id.to_string());
-    engine
+    engine.stdout(NullFile).stderr(NullFile)
 }
 
 pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {

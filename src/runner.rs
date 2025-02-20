@@ -3,17 +3,22 @@
 use crate::commands::{identify, Command};
 use crate::playlist;
 use crate::wallpaper;
+use crate::DaemonRequest;
 use std::error::Error;
 use std::fmt::Display;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::thread;
 
 pub struct Runner<'a> {
+    id: u8,
     file: PathBuf,
+    index: usize,
+    channel: mpsc::Sender<DaemonRequest>,
+
     search_path: PathBuf,
     assets_path: Option<&'a Path>,
-    index: usize,
     stored_gotos: Vec<StoredGoto>,
     monitor: Option<String>,
 }
@@ -36,13 +41,20 @@ impl Display for RuntimeError {
 
 impl<'a> Runner<'a> {
     /// Creates a new Runner that operates the given playlist.
-    pub fn new(file: PathBuf, search_path: PathBuf) -> Self {
+    pub fn new(
+        id: u8,
+        file: PathBuf,
+        search_path: PathBuf,
+        channel: mpsc::Sender<DaemonRequest>,
+    ) -> Self {
         Self {
+            id,
             file,
-            search_path,
-            assets_path: None,
+            channel,
             // This is the index of array, not the line number
             index: 0,
+            search_path,
+            assets_path: None,
             // Just a placeholder
             stored_gotos: Vec::new(),
             monitor: None,
@@ -50,15 +62,15 @@ impl<'a> Runner<'a> {
     }
 
     /// Sets the assets path of this runner
-    pub fn assets_path(&mut self, path: &'a Path) -> &mut Self {
-        self.assets_path = Some(path);
+    pub fn assets_path(&mut self, path: Option<&'a Path>) -> &mut Self {
+        self.assets_path = path;
         self
     }
 
     /// The thread main function
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let raw_file = playlist::find(&self.file, &self.search_path)?;
-        let lines: Vec<String> = BufReader::new(&raw_file)
+        let mut raw_file = playlist::find(&self.file, &self.search_path)?;
+        let mut lines: Vec<String> = BufReader::new(&raw_file)
             .lines()
             .map(|line| line.unwrap().trim().to_string())
             .filter(|line| !line.is_empty())
@@ -82,7 +94,9 @@ impl<'a> Runner<'a> {
             match cmd {
                 Command::Wallpaper(id, duration) => {
                     let cmd = wallpaper::get_cmd(id, self.assets_path, self.monitor.as_deref());
-                    wallpaper::summon(cmd, duration)?;
+                    if let Err(err) = wallpaper::summon(cmd, duration) {
+                        eprintln!("{}", err);
+                    };
                 }
                 Command::Wait(duration) => thread::sleep(duration),
                 Command::Goto(line, count) => {
@@ -92,10 +106,26 @@ impl<'a> Runner<'a> {
                     self.index = line;
                     continue;
                 }
-                Command::Summon(path) => self.summon(),
-                Command::Replace(path) => self.replace(),
+                Command::Summon(path) => {
+                    self.channel.send(DaemonRequest::NewRunner(path)).unwrap();
+                }
+                Command::Replace(path) => {
+                    self.file = path;
+                    raw_file = playlist::find(&self.file, &self.search_path)?;
+                    lines = BufReader::new(&raw_file)
+                        .lines()
+                        .map(|line| line.unwrap().trim().to_string())
+                        .filter(|line| !line.is_empty())
+                        .filter(|line| !line.starts_with("#"))
+                        .collect();
+                    self.index = 0;
+                    continue;
+                }
                 Command::Monitor(name) => self.monitor = Some(name),
-                Command::End => break Ok(()),
+                Command::End => {
+                    self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
+                    break Ok(());
+                }
             }
         }
     }
@@ -124,9 +154,6 @@ impl<'a> Runner<'a> {
             self.stored_gotos.push(cached);
         }
     }
-
-    fn summon(&self) {}
-    fn replace(&self) {}
 }
 
 #[cfg(test)]
