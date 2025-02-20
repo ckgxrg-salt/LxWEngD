@@ -1,46 +1,36 @@
 //! Provides utils for summoning linux-wallpaperengine
 
 use crate::runner::RuntimeError;
-use std::ops::Deref;
 use std::path::Path;
-use std::process::Command;
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time::Duration;
+use subprocess::Exec;
 
-pub fn get_cmd(id: u32, assets_path: Option<&Path>, monitor: Option<&str>) -> Command {
-    let mut engine = Command::new("linux-wallpaperengine");
+pub fn get_cmd(id: u32, assets_path: Option<&Path>, monitor: Option<&str>) -> Exec {
+    let mut engine = Exec::cmd("linux-wallpaperengine");
     if let Some(value) = assets_path {
-        engine.arg("--assets-dir").arg(value);
+        engine = engine.arg("--assets-dir").arg(value);
     }
     if let Some(value) = monitor {
-        engine.arg("--screen-root").arg(value);
+        engine = engine.arg("--screen-root").arg(value).arg("--bg");
         // If invoked without --screen-root, linux-wallpaperengine rejects --bg
-        engine.arg("--bg");
     }
-    engine.arg(id.to_string());
+    engine = engine.arg(id.to_string());
     engine
 }
 
-pub fn summon(mut cmd: Command, duration: Duration) -> Result<(), RuntimeError> {
-    // exitcode, condvar
-    let pair = Arc::new((Mutex::new(None), Condvar::new()));
-    let pair2 = Arc::clone(&pair);
-    let monitor = thread::spawn(move || {
-        let (lock, cond) = &*pair2;
-        let mut status = lock.lock().unwrap();
-        *status = Some(cmd.status().unwrap());
-        cond.notify_one();
-    });
-
-    let (lock, cond) = &*pair;
-    let status = lock.lock().unwrap();
-    let result = cond.wait_timeout(status, duration).unwrap();
-    (*monitor.thread()).id();
-    if result.1.timed_out() {
-        Ok(())
-    } else {
-        Err(RuntimeError::EngineDied)
+pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
+    let mut proc = cmd.popen().unwrap();
+    let result = proc.wait_timeout(duration);
+    match result {
+        Ok(None) => {
+            proc.terminate().unwrap();
+            // Give it some time to finalise
+            proc.wait_timeout(Duration::from_secs(5)).unwrap();
+            proc.kill().unwrap();
+            Ok(())
+        }
+        Ok(Some(_)) => Err(RuntimeError::EngineDied),
+        Err(_) => Err(RuntimeError::EngineDied),
     }
 }
 

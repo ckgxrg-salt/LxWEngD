@@ -5,10 +5,9 @@ use crate::playlist;
 use crate::wallpaper;
 use std::error::Error;
 use std::fmt::Display;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
 
 pub struct Runner<'a> {
     file: PathBuf,
@@ -58,8 +57,7 @@ impl<'a> Runner<'a> {
 
     /// The thread main function
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut raw_file = playlist::find(&self.file, &self.search_path)?;
-        let mut content = String::new();
+        let raw_file = playlist::find(&self.file, &self.search_path)?;
         let lines: Vec<String> = BufReader::new(&raw_file)
             .lines()
             .map(|line| line.unwrap().trim().to_string())
@@ -83,11 +81,7 @@ impl<'a> Runner<'a> {
             };
             match cmd {
                 Command::Wallpaper(id, duration) => {
-                    let cmd = wallpaper::get_cmd(
-                        id,
-                        self.assets_path,
-                        self.monitor.as_ref().map(|x| x.as_str()),
-                    );
+                    let cmd = wallpaper::get_cmd(id, self.assets_path, self.monitor.as_deref());
                     wallpaper::summon(cmd, duration)?;
                 }
                 Command::Wait(duration) => thread::sleep(duration),

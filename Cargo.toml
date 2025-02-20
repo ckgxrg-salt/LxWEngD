@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.28", features = ["derive"] }
 duration-str = "0.13.0"
+subprocess = "0.2.9"
