@@ -1,4 +1,6 @@
-//! Provides utils for summoning linux-wallpaperengine
+//! # Wallpapers
+//!
+//! Provides utils for generating command and summoning linux-wallpaperengine.   
 
 use crate::runner::RuntimeError;
 use std::path::Path;

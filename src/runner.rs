@@ -1,4 +1,10 @@
-//! Each runner holds a playlist file and execute it until quits.
+//! # Runners
+//!
+//! Each runner holds a playlist file and executes it.   
+//!
+//! The runner may fail to initialise due to some errors, if this happens, the runner will report
+//! to the main thread using DaemonRequest::Abort.   
+//! Other errors are printed to stderr and the runner will continue to operate.   
 
 use crate::commands::{identify, Command};
 use crate::playlist;
@@ -30,12 +36,24 @@ struct StoredGoto {
 
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
+    FileNotFound(PathBuf),
     EngineDied,
 }
 impl Error for RuntimeError {}
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TODO")
+        match self {
+            RuntimeError::FileNotFound(path) => {
+                write!(
+                    f,
+                    "Cannot find playlist file \"{}\"",
+                    path.to_str().unwrap()
+                )
+            }
+            RuntimeError::EngineDied => {
+                write!(f, "linux-wallpaperengine unexpectedly exited")
+            }
+        }
     }
 }
 
@@ -67,9 +85,22 @@ impl<'a> Runner<'a> {
         self
     }
 
-    /// The thread main function
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut raw_file = playlist::find(&self.file, &self.search_path)?;
+    /// The thread main method   
+    ///
+    /// # Errors
+    /// Errors that will halt the runner will be reported using DaemonRequest::Abort.   
+    /// Other errors are printed to stderr, and runner skips that command.   
+    pub fn run(&mut self) {
+        let Ok(mut raw_file) = playlist::find(&self.file, &self.search_path) else {
+            // Aborts if no file found
+            self.channel
+                .send(DaemonRequest::Abort(
+                    self.id,
+                    RuntimeError::FileNotFound(self.file.clone()),
+                ))
+                .unwrap();
+            return;
+        };
         let mut lines: Vec<String> = BufReader::new(&raw_file)
             .lines()
             .map(|line| line.unwrap().trim().to_string())
@@ -87,7 +118,12 @@ impl<'a> Runner<'a> {
             let cmd = match identify(current_line) {
                 Ok(cmd) => cmd,
                 Err(err) => {
-                    eprintln!("{}", err);
+                    eprintln!(
+                        "\"{0}\" line {1}: {2}, skipping",
+                        self.file.to_str().unwrap(),
+                        self.index + 1,
+                        err
+                    );
                     continue;
                 }
             };
@@ -95,7 +131,13 @@ impl<'a> Runner<'a> {
                 Command::Wallpaper(id, duration) => {
                     let cmd = wallpaper::get_cmd(id, self.assets_path, self.monitor.as_deref());
                     if let Err(err) = wallpaper::summon(cmd, duration) {
-                        eprintln!("{}", err);
+                        eprintln!(
+                            "\"{0}\" line {1}: {2}, skipping",
+                            self.file.to_str().unwrap(),
+                            self.index + 1,
+                            err
+                        );
+                        continue;
                     };
                 }
                 Command::Wait(duration) => thread::sleep(duration),
@@ -111,7 +153,17 @@ impl<'a> Runner<'a> {
                 }
                 Command::Replace(path) => {
                     self.file = path;
-                    raw_file = playlist::find(&self.file, &self.search_path)?;
+                    let Ok(new_file) = playlist::find(&self.file, &self.search_path) else {
+                        // Aborts if no file found
+                        self.channel
+                            .send(DaemonRequest::Abort(
+                                self.id,
+                                RuntimeError::FileNotFound(self.file.clone()),
+                            ))
+                            .unwrap();
+                        return;
+                    };
+                    raw_file = new_file;
                     lines = BufReader::new(&raw_file)
                         .lines()
                         .map(|line| line.unwrap().trim().to_string())
@@ -124,7 +176,7 @@ impl<'a> Runner<'a> {
                 Command::Monitor(name) => self.monitor = Some(name),
                 Command::End => {
                     self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
-                    break Ok(());
+                    break;
                 }
             }
         }
@@ -153,15 +205,5 @@ impl<'a> Runner<'a> {
             };
             self.stored_gotos.push(cached);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_goto() {
-        let instance = Runner::new(PathBuf::from("nothing"), PathBuf::from("nothing"));
     }
 }

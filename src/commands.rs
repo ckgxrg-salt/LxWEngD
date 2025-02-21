@@ -1,4 +1,7 @@
-//! Define commands the daemon can identify
+//! # Commands
+//!
+//! Defines commands the daemon can identify.   
+//! Also provides a function to parse strings to commands.   
 
 use std::error::Error;
 use std::fmt::Display;
@@ -30,7 +33,17 @@ pub enum ParseError {
 impl Error for ParseError {}
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TODO")
+        match self {
+            ParseError::CommandNotFound => {
+                write!(f, "Unrecognised command")
+            }
+            ParseError::NotEnoughArguments => {
+                write!(f, "Not enough arguments are given to the command")
+            }
+            ParseError::InvalidArgument => {
+                write!(f, "Arguments given to the command are invalid")
+            }
+        }
     }
 }
 

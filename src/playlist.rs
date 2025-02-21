@@ -1,4 +1,6 @@
-//! This module interprets playlist files
+//! # Playlists
+//!
+//! This module finds playlist files in some given search path.   
 
 use std::env;
 use std::error::Error;

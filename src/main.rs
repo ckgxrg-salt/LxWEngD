@@ -1,3 +1,16 @@
+//! # Entry of LxWEngD
+//!
+//! Upon starting, the main thread starts the first runner thread and add it to known runners.   
+//!
+//! The main thread then listens for requests from runner threads.   
+//! DaemonRequest::NewRunner can ask the main thread to summon a new runner thread and add it to
+//! known runners.   
+//!
+//! When a runner finishes its job, either gracefully or unexpectedly, they report to the main
+//! thread using DaemonRequest::Exit or DaemonRequest::Abort.   
+//! The main thread will remove the runner from known runners, then.   
+//!
+//! When all known runners exited, the main thread also quits.   
 mod commands;
 mod playlist;
 mod runner;
@@ -67,13 +80,17 @@ lazy_static! {
     static ref Cfg: Config = parse();
 }
 
-/// Accepted requests to the main thread
-/// - NewRunner(PathBuf): Summons a new runner thread operating the given playlist.
+/// Accepted requests to the main thread   
+/// - NewRunner(playlist file): Summons a new runner thread operating the given playlist.   
+/// - Exit(id): Reports that runner is gracefully exiting.   
+/// - Abort(id, error): Reports that runner encountered an error, and is halting.   
 enum DaemonRequest {
     NewRunner(PathBuf),
     Exit(u8),
+    Abort(u8, runner::RuntimeError),
 }
-fn invoke() {
+
+fn main() {
     let (tx, rx) = mpsc::channel::<DaemonRequest>();
     let mut first_runner = runner::Runner::new(
         0,
@@ -83,13 +100,17 @@ fn invoke() {
     );
     first_runner.assets_path(Cfg.assets_path.as_deref());
     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
-    let first = thread::spawn(move || first_runner.run().unwrap());
+    let first = thread::spawn(move || first_runner.run());
     runners.insert(0, first);
 
     while !runners.is_empty() {
         let message = rx.recv().unwrap();
         match message {
             DaemonRequest::Exit(id) => {
+                runners.remove(&id);
+            }
+            DaemonRequest::Abort(id, error) => {
+                eprintln!("Runner {0} aborted with error: {1}", id, error);
                 runners.remove(&id);
             }
             DaemonRequest::NewRunner(playlist) => {
@@ -102,7 +123,10 @@ fn invoke() {
                     );
                     runner.assets_path(Cfg.assets_path.as_deref());
                     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
-                    let thread = thread::spawn(move || runner.run().unwrap());
+                    let thread = thread::Builder::new()
+                        .name(format!("Runner {}", id))
+                        .spawn(move || runner.run())
+                        .unwrap();
                     runners.insert(id, thread);
                 } else {
                     eprintln!("Cannot allocate an id for new runner, perhaps upper limit has been reached?");
@@ -120,5 +144,3 @@ fn available_id(map: &HashMap<u8, thread::JoinHandle<()>>) -> Result<u8, ()> {
     }
     Err(())
 }
-
-fn main() {}
