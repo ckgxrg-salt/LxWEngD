@@ -16,7 +16,13 @@ pub enum PlaylistError {
 impl Error for PlaylistError {}
 impl Display for PlaylistError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TODO")
+        match self {
+            PlaylistError::DirectoryNotFound => write!(
+                f,
+                "Cannot find the default search path: $XDG_CONFIG_HOME and $HOME are both missing"
+            ),
+            PlaylistError::FileNotFound => write!(f, "Cannot find the playlist file"),
+        }
     }
 }
 

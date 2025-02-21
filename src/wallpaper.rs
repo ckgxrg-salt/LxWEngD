@@ -21,9 +21,12 @@ pub fn get_cmd(id: u32, assets_path: Option<&Path>, monitor: Option<&str>) -> Ex
 }
 
 pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
-    let mut proc = cmd.popen().unwrap();
+    let Ok(mut proc) = cmd.popen() else {
+        return Err(RuntimeError::EngineDied);
+    };
     let result = proc.wait_timeout(duration);
     match result {
+        // Duration has elapsed
         Ok(None) => {
             proc.terminate().unwrap();
             // Give it some time to finalise
@@ -31,6 +34,7 @@ pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
             proc.kill().unwrap();
             Ok(())
         }
+        // Terminated abruptly
         Ok(Some(_)) => Err(RuntimeError::EngineDied),
         Err(_) => Err(RuntimeError::EngineDied),
     }
@@ -39,13 +43,16 @@ pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Stdio;
+    use std::path::PathBuf;
 
     #[test]
-    fn test_summon_failure() {
-        let mut cmd = Command::new("linux-wallpaperengine");
-        cmd.stderr(Stdio::null());
-        let result = summon(cmd, Duration::from_secs(15));
-        assert_eq!(result, Err(RuntimeError::EngineDied));
+    fn test_get_cmd() {
+        let cmd = get_cmd(114514, Some(&PathBuf::from("ng")), Some("Headless-1"));
+        assert_eq!(
+            cmd.to_cmdline_lossy(),
+            String::from(
+                "linux-wallpaperengine --assets-dir ng --screen-root Headless-1 --bg 114514"
+            )
+        );
     }
 }

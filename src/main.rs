@@ -11,6 +11,7 @@
 //! The main thread will remove the runner from known runners, then.   
 //!
 //! When all known runners exited, the main thread also quits.   
+
 mod commands;
 mod playlist;
 mod runner;
@@ -19,8 +20,10 @@ mod wallpaper;
 use clap::Parser;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::env;
+use std::path::PathBuf;
 use std::sync::mpsc;
-use std::{path::PathBuf, thread};
+use std::thread;
 
 #[derive(Parser)]
 #[command(version = "0.1", about, long_about = None)]
@@ -78,6 +81,11 @@ fn parse() -> Config {
 }
 lazy_static! {
     static ref Cfg: Config = parse();
+    static ref SearchPath: PathBuf = playlist::config_dir().unwrap_or_else(|err| {
+        eprintln!("{}", err);
+        // If fully qualified name is passed, this value does not matter
+        PathBuf::from("")
+    });
 }
 
 /// Accepted requests to the main thread   
@@ -90,21 +98,19 @@ enum DaemonRequest {
     Abort(u8, runner::RuntimeError),
 }
 
-fn main() {
+fn main() -> Result<(), runner::RuntimeError> {
     let (tx, rx) = mpsc::channel::<DaemonRequest>();
-    let mut first_runner = runner::Runner::new(
-        0,
-        Cfg.playlist.clone(),
-        playlist::config_dir().unwrap(),
-        tx.clone(),
-    );
+    let mut first_runner = runner::Runner::new(0, Cfg.playlist.clone(), &SearchPath, tx.clone());
     first_runner.assets_path(Cfg.assets_path.as_deref());
     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
     let first = thread::spawn(move || first_runner.run());
     runners.insert(0, first);
 
     while !runners.is_empty() {
-        let message = rx.recv().unwrap();
+        let Ok(message) = rx.recv() else {
+            eprintln!("Channel to runners has closed, aborting");
+            break;
+        };
         match message {
             DaemonRequest::Exit(id) => {
                 runners.remove(&id);
@@ -115,18 +121,16 @@ fn main() {
             }
             DaemonRequest::NewRunner(playlist) => {
                 if let Ok(id) = available_id(&runners) {
-                    let mut runner = runner::Runner::new(
-                        id,
-                        playlist,
-                        playlist::config_dir().unwrap(),
-                        tx.clone(),
-                    );
+                    let mut runner = runner::Runner::new(id, playlist, &SearchPath, tx.clone());
                     runner.assets_path(Cfg.assets_path.as_deref());
                     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
-                    let thread = thread::Builder::new()
+                    let Ok(thread) = thread::Builder::new()
                         .name(format!("Runner {}", id))
                         .spawn(move || runner.run())
-                        .unwrap();
+                    else {
+                        eprintln!("Failed to summon new runner due to OS error");
+                        continue;
+                    };
                     runners.insert(id, thread);
                 } else {
                     eprintln!("Cannot allocate an id for new runner, perhaps upper limit has been reached?");
@@ -134,6 +138,7 @@ fn main() {
             }
         };
     }
+    Ok(())
 }
 
 fn available_id(map: &HashMap<u8, thread::JoinHandle<()>>) -> Result<u8, ()> {

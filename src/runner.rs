@@ -23,7 +23,7 @@ pub struct Runner<'a> {
     index: usize,
     channel: mpsc::Sender<DaemonRequest>,
 
-    search_path: PathBuf,
+    search_path: &'a Path,
     assets_path: Option<&'a Path>,
     stored_gotos: Vec<StoredGoto>,
     monitor: Option<String>,
@@ -62,7 +62,7 @@ impl<'a> Runner<'a> {
     pub fn new(
         id: u8,
         file: PathBuf,
-        search_path: PathBuf,
+        search_path: &'a Path,
         channel: mpsc::Sender<DaemonRequest>,
     ) -> Self {
         Self {
@@ -103,15 +103,29 @@ impl<'a> Runner<'a> {
         };
         let mut lines: Vec<String> = BufReader::new(&raw_file)
             .lines()
-            .map(|line| line.unwrap().trim().to_string())
-            .filter(|line| !line.is_empty())
-            .filter(|line| !line.starts_with("#"))
+            .map(|line| {
+                line.unwrap_or_else(|err| {
+                    eprintln!(
+                        "\"{0}\" line {1}: {2}, ignoring",
+                        self.file.to_str().unwrap(),
+                        self.index + 1,
+                        err
+                    );
+                    String::new()
+                })
+                .trim()
+                .to_string()
+            })
             .collect();
         loop {
             let current_line = if let Some(value) = lines.get(self.index) {
                 value
             } else {
                 self.index = 0;
+                continue;
+            };
+            // Ignore comments
+            if current_line.starts_with("#") || current_line.is_empty() {
                 continue;
             };
             self.index += 1;
@@ -166,9 +180,19 @@ impl<'a> Runner<'a> {
                     raw_file = new_file;
                     lines = BufReader::new(&raw_file)
                         .lines()
-                        .map(|line| line.unwrap().trim().to_string())
-                        .filter(|line| !line.is_empty())
-                        .filter(|line| !line.starts_with("#"))
+                        .map(|line| {
+                            line.unwrap_or_else(|err| {
+                                eprintln!(
+                                    "\"{0}\" line {1}: {2}, ignoring",
+                                    self.file.to_str().unwrap(),
+                                    self.index + 1,
+                                    err
+                                );
+                                String::new()
+                            })
+                            .trim()
+                            .to_string()
+                        })
                         .collect();
                     self.index = 0;
                     continue;
