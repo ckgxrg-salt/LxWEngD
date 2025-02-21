@@ -6,6 +6,8 @@
 //! to the main thread using DaemonRequest::Abort.   
 //! Other errors are printed to stderr and the runner will continue to operate.   
 
+use duration_str::HumanFormat;
+
 use crate::commands::{identify, Command};
 use crate::playlist;
 use crate::wallpaper;
@@ -18,11 +20,16 @@ use std::sync::mpsc;
 use std::thread;
 
 pub struct Runner<'a> {
+    // Basic info
     id: u8,
     file: PathBuf,
     index: usize,
     channel: mpsc::Sender<DaemonRequest>,
 
+    // Flag
+    dry_run: bool,
+
+    // Runtime info
     search_path: &'a Path,
     assets_path: Option<&'a Path>,
     stored_gotos: Vec<StoredGoto>,
@@ -37,6 +44,7 @@ struct StoredGoto {
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
     FileNotFound(PathBuf),
+    InitFailed,
     EngineDied,
 }
 impl Error for RuntimeError {}
@@ -53,6 +61,9 @@ impl Display for RuntimeError {
             RuntimeError::EngineDied => {
                 write!(f, "linux-wallpaperengine unexpectedly exited")
             }
+            RuntimeError::InitFailed => {
+                write!(f, "Initialisation process failed")
+            }
         }
     }
 }
@@ -64,6 +75,7 @@ impl<'a> Runner<'a> {
         file: PathBuf,
         search_path: &'a Path,
         channel: mpsc::Sender<DaemonRequest>,
+        dry_run: bool,
     ) -> Self {
         Self {
             id,
@@ -76,6 +88,7 @@ impl<'a> Runner<'a> {
             // Just a placeholder
             stored_gotos: Vec::new(),
             monitor: None,
+            dry_run,
         }
     }
 
@@ -91,7 +104,7 @@ impl<'a> Runner<'a> {
     /// Errors that will halt the runner will be reported using DaemonRequest::Abort.   
     /// Other errors are printed to stderr, and runner skips that command.   
     pub fn run(&mut self) {
-        let Ok(mut raw_file) = playlist::find(&self.file, &self.search_path) else {
+        let Ok(mut raw_file) = playlist::find(&self.file, self.search_path) else {
             // Aborts if no file found
             self.channel
                 .send(DaemonRequest::Abort(
@@ -108,7 +121,7 @@ impl<'a> Runner<'a> {
                     eprintln!(
                         "\"{0}\" line {1}: {2}, ignoring",
                         self.file.to_str().unwrap(),
-                        self.index + 1,
+                        self.index,
                         err
                     );
                     String::new()
@@ -124,18 +137,18 @@ impl<'a> Runner<'a> {
                 self.index = 0;
                 continue;
             };
+            self.index += 1;
             // Ignore comments
             if current_line.starts_with("#") || current_line.is_empty() {
                 continue;
             };
-            self.index += 1;
             let cmd = match identify(current_line) {
                 Ok(cmd) => cmd,
                 Err(err) => {
                     eprintln!(
                         "\"{0}\" line {1}: {2}, skipping",
                         self.file.to_str().unwrap(),
-                        self.index + 1,
+                        self.index,
                         err
                     );
                     continue;
@@ -143,31 +156,64 @@ impl<'a> Runner<'a> {
             };
             match cmd {
                 Command::Wallpaper(id, duration) => {
+                    if self.dry_run {
+                        println!(
+                            "{0}: Display wallpaper ID: {1} for {2}",
+                            self.index,
+                            id,
+                            duration.human_format()
+                        );
+                        thread::sleep(duration);
+                        continue;
+                    }
                     let cmd = wallpaper::get_cmd(id, self.assets_path, self.monitor.as_deref());
                     if let Err(err) = wallpaper::summon(cmd, duration) {
                         eprintln!(
                             "\"{0}\" line {1}: {2}, skipping",
                             self.file.to_str().unwrap(),
-                            self.index + 1,
+                            self.index,
                             err
                         );
                         continue;
                     };
                 }
-                Command::Wait(duration) => thread::sleep(duration),
+                Command::Wait(duration) => {
+                    if self.dry_run {
+                        println!("{0}: Sleep for {1}", self.index, duration.human_format());
+                    }
+                    thread::sleep(duration)
+                }
                 Command::Goto(line, count) => {
+                    if self.dry_run {
+                        println!("{0}: Goto line {1}", self.index, line);
+                    }
                     if count != 0 {
                         self.cache_goto(&line, &count);
+                    } else {
+                        self.index = line;
                     }
-                    self.index = line;
                     continue;
                 }
                 Command::Summon(path) => {
+                    if self.dry_run {
+                        println!(
+                            "{0}: Summon a new runner for playlist {1}",
+                            self.index,
+                            path.to_string_lossy()
+                        );
+                    }
                     self.channel.send(DaemonRequest::NewRunner(path)).unwrap();
                 }
                 Command::Replace(path) => {
+                    if self.dry_run {
+                        println!(
+                            "{0}: Replace the playlist with {1}",
+                            self.index,
+                            path.to_string_lossy()
+                        );
+                    }
                     self.file = path;
-                    let Ok(new_file) = playlist::find(&self.file, &self.search_path) else {
+                    let Ok(new_file) = playlist::find(&self.file, self.search_path) else {
                         // Aborts if no file found
                         self.channel
                             .send(DaemonRequest::Abort(
@@ -185,7 +231,7 @@ impl<'a> Runner<'a> {
                                 eprintln!(
                                     "\"{0}\" line {1}: {2}, ignoring",
                                     self.file.to_str().unwrap(),
-                                    self.index + 1,
+                                    self.index,
                                     err
                                 );
                                 String::new()
@@ -197,8 +243,16 @@ impl<'a> Runner<'a> {
                     self.index = 0;
                     continue;
                 }
-                Command::Monitor(name) => self.monitor = Some(name),
+                Command::Monitor(name) => {
+                    if self.dry_run {
+                        println!("{0}: Operate on monitor {1}", self.index, name);
+                    }
+                    self.monitor = Some(name)
+                }
                 Command::End => {
+                    if self.dry_run {
+                        println!("{0}: Reached the end", self.index);
+                    }
                     self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
                     break;
                 }
@@ -219,15 +273,26 @@ impl<'a> Runner<'a> {
             let existing = self.stored_gotos.get_mut(index).unwrap();
             if existing.remaining <= 1 {
                 self.stored_gotos.remove(index);
+                if self.dry_run {
+                    println!("This goto is no longer effective");
+                }
             } else {
                 existing.remaining -= 1;
+                self.index = *line;
+                if self.dry_run {
+                    println!("Remaining times for this goto: {0}", existing.remaining);
+                }
             }
         } else {
+            if self.dry_run {
+                println!("Remaining times for this goto: {0}", count);
+            }
             let cached = StoredGoto {
                 location: *line,
                 remaining: *count,
             };
             self.stored_gotos.push(cached);
+            self.index = *line;
         }
     }
 }
