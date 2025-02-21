@@ -19,6 +19,7 @@ mod wallpaper;
 
 use clap::Parser;
 use lazy_static::lazy_static;
+use runner::RuntimeError;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -85,6 +86,7 @@ lazy_static! {
         // If fully qualified name is passed, this value does not matter
         PathBuf::from("")
     });
+    static ref CachePath: PathBuf = wallpaper::cache_dir();
 }
 
 /// Accepted requests to the main thread   
@@ -98,13 +100,29 @@ enum DaemonRequest {
 }
 
 fn main() -> Result<(), runner::RuntimeError> {
+    // If cache directory does not exist, create it
+    if !CachePath.is_dir() {
+        if let Err(err) = std::fs::create_dir(CachePath.as_path()) {
+            eprintln!("Failed to create the cache directory: {}", err);
+            return Err(RuntimeError::InitFailed);
+        };
+    }
+
+    // Begin creating first runner
     let (tx, rx) = mpsc::channel::<DaemonRequest>();
-    let mut first_runner = runner::Runner::new(0, Cfg.playlist.clone(), &SearchPath, tx.clone());
+    let mut first_runner = runner::Runner::new(
+        0,
+        Cfg.playlist.clone(),
+        &SearchPath,
+        tx.clone(),
+        Cfg.dry_run,
+    );
     first_runner.assets_path(Cfg.assets_path.as_deref());
     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
     let first = thread::spawn(move || first_runner.run());
     runners.insert(0, first);
 
+    // Listen to commands
     while !runners.is_empty() {
         let Ok(message) = rx.recv() else {
             eprintln!("Channel to runners has closed, aborting");
@@ -120,7 +138,8 @@ fn main() -> Result<(), runner::RuntimeError> {
             }
             DaemonRequest::NewRunner(playlist) => {
                 if let Ok(id) = available_id(&runners) {
-                    let mut runner = runner::Runner::new(id, playlist, &SearchPath, tx.clone());
+                    let mut runner =
+                        runner::Runner::new(id, playlist, &SearchPath, tx.clone(), Cfg.dry_run);
                     runner.assets_path(Cfg.assets_path.as_deref());
                     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
                     let Ok(thread) = thread::Builder::new()

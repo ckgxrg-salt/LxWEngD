@@ -3,9 +3,24 @@
 //! Provides utils for generating command and summoning linux-wallpaperengine.   
 
 use crate::runner::RuntimeError;
-use std::path::Path;
+use std::env;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use subprocess::{Exec, NullFile};
+
+pub fn cache_dir() -> PathBuf {
+    // linux-wallpaperengine generates some cache
+    if let Ok(mut value) = env::var("XDG_CACHE_HOME") {
+        value.push_str("/lxwengd");
+        return PathBuf::from(value);
+    };
+    if let Ok(mut value) = env::var("HOME") {
+        value.push_str("/.cache/lxwengd");
+        return PathBuf::from(value);
+    };
+    // This is not persistent anyhow
+    PathBuf::from("/tmp/lxwengd")
+}
 
 pub fn get_cmd(id: u32, assets_path: Option<&Path>, monitor: Option<&str>) -> Exec {
     let mut engine = Exec::cmd("linux-wallpaperengine");
@@ -17,7 +32,10 @@ pub fn get_cmd(id: u32, assets_path: Option<&Path>, monitor: Option<&str>) -> Ex
         // If invoked without --screen-root, linux-wallpaperengine rejects --bg
     }
     engine = engine.arg(id.to_string());
-    engine.stdout(NullFile).stderr(NullFile)
+    engine
+        .stdout(NullFile)
+        .stderr(NullFile)
+        .cwd(crate::CachePath.as_path())
 }
 
 pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
