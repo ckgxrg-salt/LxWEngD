@@ -20,7 +20,6 @@ mod wallpaper;
 use clap::Parser;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::env;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
