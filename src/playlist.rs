@@ -2,7 +2,6 @@
 //!
 //! This module finds playlist files in some given search path.   
 
-use std::env;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
@@ -24,18 +23,6 @@ impl Display for PlaylistError {
             PlaylistError::FileNotFound => write!(f, "Cannot find the playlist file"),
         }
     }
-}
-
-pub fn config_dir() -> Result<PathBuf, PlaylistError> {
-    let default;
-    if let Ok(value) = env::var("XDG_CONFIG_HOME") {
-        default = PathBuf::from(value + "/lxwengd");
-    } else if let Ok(value) = env::var("HOME") {
-        default = PathBuf::from(value + "/.config/lxwengd");
-    } else {
-        return Err(PlaylistError::DirectoryNotFound);
-    }
-    Ok(default)
 }
 
 pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> {

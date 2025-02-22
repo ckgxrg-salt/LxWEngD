@@ -31,6 +31,7 @@ pub struct Runner<'a> {
 
     // Runtime info
     search_path: &'a Path,
+    cache_path: &'a Path,
     assets_path: Option<&'a Path>,
     stored_gotos: Vec<StoredGoto>,
     monitor: Option<String>,
@@ -74,6 +75,7 @@ impl<'a> Runner<'a> {
         id: u8,
         file: PathBuf,
         search_path: &'a Path,
+        cache_path: &'a Path,
         channel: mpsc::Sender<DaemonRequest>,
         dry_run: bool,
     ) -> Self {
@@ -84,6 +86,7 @@ impl<'a> Runner<'a> {
             // This is the index of array, not the line number
             index: 0,
             search_path,
+            cache_path,
             assets_path: None,
             // Just a placeholder
             stored_gotos: Vec::new(),
@@ -156,7 +159,12 @@ impl<'a> Runner<'a> {
             };
             match cmd {
                 Command::Wallpaper(id, duration) => {
-                    let cmd = wallpaper::get_cmd(id, self.assets_path, self.monitor.as_deref());
+                    let cmd = wallpaper::get_cmd(
+                        id,
+                        self.cache_path,
+                        self.assets_path,
+                        self.monitor.as_deref(),
+                    );
                     if self.dry_run {
                         println!(
                             "{0} line {1}: Display wallpaper ID: {2} for {3}",
