@@ -1,6 +1,5 @@
-//! # Playlists
-//!
-//! This module finds playlist files in some given search path.   
+//! Finds playlist files in some given search path.
+#![warn(clippy::pedantic)]
 
 use std::error::Error;
 use std::fmt::Display;
@@ -9,22 +8,26 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, PartialEq)]
 pub enum PlaylistError {
-    DirectoryNotFound,
     FileNotFound,
 }
 impl Error for PlaylistError {}
 impl Display for PlaylistError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PlaylistError::DirectoryNotFound => write!(
-                f,
-                "Cannot find the default search path: $XDG_CONFIG_HOME and $HOME are both missing"
-            ),
             PlaylistError::FileNotFound => write!(f, "Cannot find the playlist file"),
         }
     }
 }
 
+/// Searches the given playlist in the given search path.
+///
+/// # Return
+/// If `filename` is a fully qualified path to an existing file, just open that file and return it wrapped with `Ok()`. `search_path` will be ignored in this case.
+/// Otherwise, first tries to find a file relative to `search_path` with exactly the same name.
+/// Finally, tries to find a file relative to `search_path` with name `filename.playlist`.
+///
+/// # Errors
+/// If none of these approaches can find a playlist file, returns `PlaylistError::FileNotFound`.
 pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> {
     // Fully qualified path
     if let Ok(content) = File::open(filename) {

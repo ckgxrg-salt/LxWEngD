@@ -1,7 +1,7 @@
-//! # Commands
+//! Defines commands the daemon can identify.
 //!
-//! Defines commands the daemon can identify.   
-//! Also provides a function to parse strings to commands.   
+//! Also provides a function to parse strings to commands.
+#![warn(clippy::pedantic)]
 
 use std::error::Error;
 use std::fmt::Display;
@@ -10,24 +10,32 @@ use std::time::Duration;
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
-    // id, duration
+    /// Displays the wallpaper with given id for given duration.
     Wallpaper(u32, Duration),
-    // duration
+    /// Sleeps for given duration.
     Wait(Duration),
-    // end
+    /// Ends the playlist.
     End,
-    // location, number
+    /// Jump to a line in the playlist.
     Goto(usize, u32),
-    // path
+    /// Make the current runner execute another playlist.
     Replace(PathBuf),
+    /// Requests the main thread to summon a new runner executing another playlist.
     Summon(PathBuf),
+    /// Changes the monitor the current runner operating on.
     Monitor(String),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
+    /// Indicates that this line is not a recognised command.
+    /// Blank lines are also treated as invalid commands.
     CommandNotFound,
+    /// The command requires some arguments, but not enough are provided.
+    /// Note that if you use `#` to comment in the line, anything after that `#` will be ignored.
     NotEnoughArguments,
+    /// The command requires an argument of a specific type, but the given one cannot be parsed
+    /// into that type.
     InvalidArgument,
 }
 impl Error for ParseError {}
@@ -47,7 +55,12 @@ impl Display for ParseError {
     }
 }
 
-// Converts literal commands into tuples
+/// Parse strings.
+///
+/// Returns the parsed command with `Ok()` if successful.
+///
+/// # Errors
+/// If fails to identify the given string, a [`ParseError`] is returned.
 pub fn identify(str: &str) -> Result<Command, ParseError> {
     let mut segment = str.split_whitespace();
     match segment.next() {

@@ -1,6 +1,7 @@
 //! # Wallpapers
 //!
-//! Provides utils for generating command and summoning linux-wallpaperengine.   
+//! Provides utils for generating command and summoning linux-wallpaperengine.
+#![warn(clippy::pedantic)]
 
 use crate::runner::RuntimeError;
 use std::path::Path;
@@ -40,8 +41,7 @@ pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
             Ok(())
         }
         // Terminated abruptly
-        Ok(Some(_)) => Err(RuntimeError::EngineDied),
-        Err(_) => Err(RuntimeError::EngineDied),
+        Ok(Some(_)) | Err(_) => Err(RuntimeError::EngineDied),
     }
 }
 

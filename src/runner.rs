@@ -1,10 +1,9 @@
-//! # Runners
-//!
-//! Each runner holds a playlist file and executes it.   
+//! Each runner holds a playlist file and executes it.
 //!
 //! The runner may fail to initialise due to some errors, if this happens, the runner will report
-//! to the main thread using DaemonRequest::Abort.   
-//! Other errors are printed to stderr and the runner will continue to operate.   
+//! to the main thread using [`DaemonRequest::Abort`].
+//! Other errors are printed to stderr and the runner will continue to operate.
+#![warn(clippy::pedantic)]
 
 use duration_str::HumanFormat;
 
@@ -71,6 +70,7 @@ impl Display for RuntimeError {
 
 impl<'a> Runner<'a> {
     /// Creates a new Runner that operates the given playlist.
+    #[must_use]
     pub fn new(
         id: u8,
         file: PathBuf,
@@ -101,11 +101,17 @@ impl<'a> Runner<'a> {
         self
     }
 
-    /// The thread main method   
+    /// The thread main method.
     ///
     /// # Errors
-    /// Errors that will halt the runner will be reported using DaemonRequest::Abort.   
-    /// Other errors are printed to stderr, and runner skips that command.   
+    /// Errors that will halt the runner will be reported using [`DaemonRequest::Abort`].
+    /// Other errors are printed to stderr, and runner skips that command.
+    ///
+    /// # Panics
+    /// When the runner needs to report to the main thread using its channel, but the
+    /// channel is already closed, panic will occur.   
+    /// However, if the channel is already closed, it's impossible to make a graceful exit since
+    /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
     pub fn run(&mut self) {
         let Ok(mut raw_file) = playlist::find(&self.file, self.search_path) else {
             // Aborts if no file found
@@ -134,15 +140,13 @@ impl<'a> Runner<'a> {
             })
             .collect();
         loop {
-            let current_line = if let Some(value) = lines.get(self.index) {
-                value
-            } else {
+            let Some(current_line) = lines.get(self.index) else {
                 self.index = 0;
                 continue;
             };
             self.index += 1;
             // Ignore comments
-            if current_line.starts_with("#") || current_line.is_empty() {
+            if current_line.starts_with('#') || current_line.is_empty() {
                 continue;
             };
             let cmd = match identify(current_line) {
@@ -196,7 +200,7 @@ impl<'a> Runner<'a> {
                             duration.human_format()
                         );
                     }
-                    thread::sleep(duration)
+                    thread::sleep(duration);
                 }
                 Command::Goto(line, count) => {
                     if self.dry_run {
@@ -208,7 +212,7 @@ impl<'a> Runner<'a> {
                         );
                     }
                     if count != 0 {
-                        self.cache_goto(&line, &count);
+                        self.cache_goto(line, count);
                     } else {
                         self.index = line - 1;
                     }
@@ -274,7 +278,7 @@ impl<'a> Runner<'a> {
                             name
                         );
                     }
-                    self.monitor = Some(name)
+                    self.monitor = Some(name);
                 }
                 Command::End => {
                     if self.dry_run {
@@ -291,15 +295,15 @@ impl<'a> Runner<'a> {
         }
     }
 
-    fn search_cached_gotos(&self, line: &usize) -> Option<usize> {
+    fn search_cached_gotos(&self, line: usize) -> Option<usize> {
         for (index, any) in self.stored_gotos.iter().enumerate() {
-            if any.location == *line {
+            if any.location == line {
                 return Some(index);
             }
         }
         None
     }
-    fn cache_goto(&mut self, line: &usize, count: &u32) {
+    fn cache_goto(&mut self, line: usize, count: u32) {
         if let Some(index) = self.search_cached_gotos(line) {
             let existing = self.stored_gotos.get_mut(index).unwrap();
             if existing.remaining <= 1 {
@@ -309,21 +313,21 @@ impl<'a> Runner<'a> {
                 }
             } else {
                 existing.remaining -= 1;
-                self.index = *line - 1;
+                self.index = line - 1;
                 if self.dry_run {
                     println!("Remaining times for this goto: {0}", existing.remaining);
                 }
             }
         } else {
             if self.dry_run {
-                println!("Remaining times for this goto: {0}", count);
+                println!("Remaining times for this goto: {count}");
             }
             let cached = StoredGoto {
-                location: *line,
-                remaining: *count,
+                location: line,
+                remaining: count,
             };
             self.stored_gotos.push(cached);
-            self.index = *line - 1;
+            self.index = line - 1;
         }
     }
 }

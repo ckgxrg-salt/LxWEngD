@@ -1,32 +1,34 @@
-//! # Entry of LxWEngD
+//! # Entry of `LxWEngD`
 //!
-//! Upon starting, the main thread starts the first runner thread and add it to known runners.   
+//! Upon starting, the main thread starts the first runner thread and add it to known runners.
 //!
-//! The main thread then listens for requests from runner threads.   
-//! DaemonRequest::NewRunner can ask the main thread to summon a new runner thread and add it to
-//! known runners.   
+//! The main thread then listens for requests from runner threads.
+//! `DaemonRequest::NewRunner` can ask the main thread to summon a new runner thread and add it to
+//! known runners.
 //!
 //! When a runner finishes its job, either gracefully or unexpectedly, they report to the main
-//! thread using DaemonRequest::Exit or DaemonRequest::Abort.   
-//! The main thread will remove the runner from known runners, then.   
+//! thread using `DaemonRequest::Exit` or `DaemonRequest::Abort`.
+//! The main thread will remove the runner from known runners, then.
 //!
-//! When all known runners exited, the main thread also quits.   
-
-mod commands;
-mod playlist;
-mod runner;
-mod wallpaper;
+//! When all known runners exited, the main thread also quits.
+#![warn(clippy::pedantic)]
 
 use clap::Parser;
 use lazy_static::lazy_static;
-use runner::RuntimeError;
 use std::collections::HashMap;
+use std::env;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
+use lxwengd::{DaemonRequest, Runner, RuntimeError};
+
 #[derive(Parser)]
-#[command(version = "0.1", about, long_about = None)]
+#[command(
+    version = "0.1.1",
+    about="A daemon that adds playlists to linux-wallpaperengine",
+    long_about = None
+)]
 struct Cli {
     #[arg(
         short = 'p',
@@ -79,41 +81,56 @@ fn parse() -> Config {
         dry_run: parsed.dry_run,
     }
 }
+fn sys_cache_dir() -> PathBuf {
+    // linux-wallpaperengine generates some cache
+    if let Ok(mut value) = env::var("XDG_CACHE_HOME") {
+        value.push_str("/lxwengd");
+        return PathBuf::from(value);
+    };
+    if let Ok(mut value) = env::var("HOME") {
+        value.push_str("/.cache/lxwengd");
+        return PathBuf::from(value);
+    };
+    // This is not persistent anyhow
+    PathBuf::from("/tmp/lxwengd")
+}
+fn sys_config_dir() -> Result<PathBuf, RuntimeError> {
+    let default;
+    if let Ok(value) = env::var("XDG_CONFIG_HOME") {
+        default = PathBuf::from(value + "/lxwengd");
+    } else if let Ok(value) = env::var("HOME") {
+        default = PathBuf::from(value + "/.config/lxwengd");
+    } else {
+        return Err(RuntimeError::InitFailed);
+    }
+    Ok(default)
+}
 lazy_static! {
     static ref Cfg: Config = parse();
-    static ref SearchPath: PathBuf = playlist::config_dir().unwrap_or_else(|err| {
-        eprintln!("{}", err);
+    static ref SearchPath: PathBuf = sys_config_dir().unwrap_or_else(|err| {
+        eprintln!("{err}");
         // If fully qualified name is passed, this value does not matter
         PathBuf::from("")
     });
-    static ref CachePath: PathBuf = wallpaper::cache_dir();
+    static ref CachePath: PathBuf = sys_cache_dir();
 }
 
-/// Accepted requests to the main thread   
-/// - NewRunner(playlist file): Summons a new runner thread operating the given playlist.   
-/// - Exit(id): Reports that runner is gracefully exiting.   
-/// - Abort(id, error): Reports that runner encountered an error, and is halting.   
-enum DaemonRequest {
-    NewRunner(PathBuf),
-    Exit(u8),
-    Abort(u8, runner::RuntimeError),
-}
-
-fn main() -> Result<(), runner::RuntimeError> {
+fn main() -> Result<(), RuntimeError> {
     // If cache directory does not exist, create it
     if !CachePath.is_dir() {
         if let Err(err) = std::fs::create_dir(CachePath.as_path()) {
-            eprintln!("Failed to create the cache directory: {}", err);
+            eprintln!("Failed to create the cache directory: {err}");
             return Err(RuntimeError::InitFailed);
         };
     }
 
     // Begin creating first runner
     let (tx, rx) = mpsc::channel::<DaemonRequest>();
-    let mut first_runner = runner::Runner::new(
+    let mut first_runner = Runner::new(
         0,
         Cfg.playlist.clone(),
         &SearchPath,
+        &CachePath,
         tx.clone(),
         Cfg.dry_run,
     );
@@ -133,17 +150,23 @@ fn main() -> Result<(), runner::RuntimeError> {
                 runners.remove(&id);
             }
             DaemonRequest::Abort(id, error) => {
-                eprintln!("Runner {0} aborted with error: {1}", id, error);
+                eprintln!("Runner {id} aborted with error: {error}");
                 runners.remove(&id);
             }
             DaemonRequest::NewRunner(playlist) => {
                 if let Ok(id) = available_id(&runners) {
-                    let mut runner =
-                        runner::Runner::new(id, playlist, &SearchPath, tx.clone(), Cfg.dry_run);
+                    let mut runner = Runner::new(
+                        id,
+                        playlist,
+                        &SearchPath,
+                        &CachePath,
+                        tx.clone(),
+                        Cfg.dry_run,
+                    );
                     runner.assets_path(Cfg.assets_path.as_deref());
                     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
                     let Ok(thread) = thread::Builder::new()
-                        .name(format!("Runner {}", id))
+                        .name(format!("Runner {id}"))
                         .spawn(move || runner.run())
                     else {
                         eprintln!("Failed to summon new runner due to OS error");
