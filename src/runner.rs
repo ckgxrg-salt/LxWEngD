@@ -156,21 +156,23 @@ impl<'a> Runner<'a> {
             };
             match cmd {
                 Command::Wallpaper(id, duration) => {
+                    let cmd = wallpaper::get_cmd(id, self.assets_path, self.monitor.as_deref());
                     if self.dry_run {
                         println!(
-                            "{0}: Display wallpaper ID: {1} for {2}",
+                            "{0} line {1}: Display wallpaper ID: {2} for {3}",
+                            self.file.to_string_lossy(),
                             self.index,
                             id,
                             duration.human_format()
                         );
+                        println!("Run: {}", cmd.to_cmdline_lossy());
                         thread::sleep(duration);
                         continue;
                     }
-                    let cmd = wallpaper::get_cmd(id, self.assets_path, self.monitor.as_deref());
                     if let Err(err) = wallpaper::summon(cmd, duration) {
                         eprintln!(
-                            "\"{0}\" line {1}: {2}, skipping",
-                            self.file.to_str().unwrap(),
+                            "{0} line {1}: {2}, skipping",
+                            self.file.to_string_lossy(),
                             self.index,
                             err
                         );
@@ -179,25 +181,36 @@ impl<'a> Runner<'a> {
                 }
                 Command::Wait(duration) => {
                     if self.dry_run {
-                        println!("{0}: Sleep for {1}", self.index, duration.human_format());
+                        println!(
+                            "{0} line {1}: Sleep for {2}",
+                            self.file.to_string_lossy(),
+                            self.index,
+                            duration.human_format()
+                        );
                     }
                     thread::sleep(duration)
                 }
                 Command::Goto(line, count) => {
                     if self.dry_run {
-                        println!("{0}: Goto line {1}", self.index, line);
+                        println!(
+                            "{0} line {1}: Goto line {2}",
+                            self.file.to_string_lossy(),
+                            self.index,
+                            line
+                        );
                     }
                     if count != 0 {
                         self.cache_goto(&line, &count);
                     } else {
-                        self.index = line;
+                        self.index = line - 1;
                     }
                     continue;
                 }
                 Command::Summon(path) => {
                     if self.dry_run {
                         println!(
-                            "{0}: Summon a new runner for playlist {1}",
+                            "{0} line {1}: Summon a new runner for playlist {2}",
+                            self.file.to_string_lossy(),
                             self.index,
                             path.to_string_lossy()
                         );
@@ -207,7 +220,8 @@ impl<'a> Runner<'a> {
                 Command::Replace(path) => {
                     if self.dry_run {
                         println!(
-                            "{0}: Replace the playlist with {1}",
+                            "{0} line {1}: Replace the playlist with {2}",
+                            self.file.to_string_lossy(),
                             self.index,
                             path.to_string_lossy()
                         );
@@ -245,13 +259,22 @@ impl<'a> Runner<'a> {
                 }
                 Command::Monitor(name) => {
                     if self.dry_run {
-                        println!("{0}: Operate on monitor {1}", self.index, name);
+                        println!(
+                            "{0} line {1}: Operate on monitor {2}",
+                            self.file.to_string_lossy(),
+                            self.index,
+                            name
+                        );
                     }
                     self.monitor = Some(name)
                 }
                 Command::End => {
                     if self.dry_run {
-                        println!("{0}: Reached the end", self.index);
+                        println!(
+                            "{0} line {1}: Reached the end",
+                            self.file.to_string_lossy(),
+                            self.index
+                        );
                     }
                     self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
                     break;
@@ -278,7 +301,7 @@ impl<'a> Runner<'a> {
                 }
             } else {
                 existing.remaining -= 1;
-                self.index = *line;
+                self.index = *line - 1;
                 if self.dry_run {
                     println!("Remaining times for this goto: {0}", existing.remaining);
                 }
@@ -292,7 +315,7 @@ impl<'a> Runner<'a> {
                 remaining: *count,
             };
             self.stored_gotos.push(cached);
-            self.index = *line;
+            self.index = *line - 1;
         }
     }
 }
