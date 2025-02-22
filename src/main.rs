@@ -190,3 +190,33 @@ fn available_id(map: &HashMap<u8, thread::JoinHandle<()>>) -> Result<u8, ()> {
     }
     Err(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn playlist_location() {
+        env::set_var("XDG_CONFIG_HOME", ".");
+        assert_eq!(sys_config_dir().unwrap(), PathBuf::from("./lxwengd"));
+        env::remove_var("XDG_CONFIG_HOME");
+        env::set_var("HOME", ".");
+        assert_eq!(
+            sys_config_dir().unwrap(),
+            PathBuf::from("./.config/lxwengd")
+        );
+        env::remove_var("HOME");
+        assert!(sys_config_dir().is_err());
+    }
+
+    #[test]
+    fn cache_location() {
+        env::set_var("XDG_CACHE_HOME", ".");
+        assert_eq!(sys_cache_dir(), PathBuf::from("./lxwengd"));
+        env::remove_var("XDG_CACHE_HOME");
+        env::set_var("HOME", ".");
+        assert_eq!(sys_cache_dir(), PathBuf::from("./.cache/lxwengd"));
+        env::remove_var("HOME");
+        assert_eq!(sys_cache_dir(), PathBuf::from("/tmp/lxwengd"));
+    }
+}

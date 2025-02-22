@@ -56,20 +56,8 @@ pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> 
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-
     use super::*;
-
-    #[test]
-    fn playlist_location() {
-        env::set_var("XDG_CONFIG_HOME", ".");
-        assert_eq!(config_dir().unwrap(), PathBuf::from("./lxwengd"));
-        env::remove_var("XDG_CONFIG_HOME");
-        env::set_var("HOME", ".");
-        assert_eq!(config_dir().unwrap(), PathBuf::from("./.config/lxwengd"));
-        env::remove_var("HOME");
-        assert!(config_dir().is_err());
-    }
+    use std::io::Read;
 
     #[test]
     fn find_playlist() {

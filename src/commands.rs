@@ -6,13 +6,15 @@
 use std::error::Error;
 use std::fmt::Display;
 use std::path::PathBuf;
+use std::str::SplitWhitespace;
 use std::time::Duration;
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
     /// Displays the wallpaper with given id for given duration.
-    /// Last argument indicates whether this wallpaper will be displayed forever.
-    Wallpaper(u32, Duration, bool),
+    /// Third argument indicates whether this wallpaper will be displayed forever.
+    /// Last arguments are a list of key-value pairs for recognised properties.
+    Wallpaper(u32, Duration, bool, Vec<(String, String)>),
     /// Sleeps for given duration.
     Wait(Duration),
     /// Ends the playlist.
@@ -62,6 +64,7 @@ impl Display for ParseError {
 ///
 /// # Errors
 /// If fails to identify the given string, a [`ParseError`] is returned.
+#[allow(clippy::missing_panics_doc)]
 pub fn identify(str: &str) -> Result<Command, ParseError> {
     let mut segment = str.split_whitespace();
     match segment.next() {
@@ -120,19 +123,33 @@ pub fn identify(str: &str) -> Result<Command, ParseError> {
                 .parse::<u32>()
                 .map_err(|_| ParseError::CommandNotFound)?;
             let duration_str = segment.next();
-            if let Some(value) = duration_str {
+            if duration_str.is_some_and(|value| !value.starts_with('#')) {
+                let value = duration_str.unwrap();
+                let properties = extract_properties(&mut segment)?;
                 if value == "forever" {
-                    return Ok(Command::Wallpaper(id, Duration::ZERO, true));
+                    return Ok(Command::Wallpaper(id, Duration::ZERO, true, properties));
                 }
                 let duration =
                     duration_str::parse(value).map_err(|_| ParseError::InvalidArgument)?;
-                return Ok(Command::Wallpaper(id, duration, false));
+                return Ok(Command::Wallpaper(id, duration, false, properties));
             }
-            Ok(Command::Wallpaper(id, Duration::ZERO, true))
+            Ok(Command::Wallpaper(id, Duration::ZERO, true, Vec::new()))
         }
 
         _ => Err(ParseError::CommandNotFound),
     }
+}
+
+fn extract_properties(segment: &mut SplitWhitespace) -> Result<Vec<(String, String)>, ParseError> {
+    let mut result: Vec<(String, String)> = Vec::new();
+    for value in segment.by_ref() {
+        if value.starts_with('#') {
+            break;
+        }
+        let (key, value) = value.split_once('=').ok_or(ParseError::InvalidArgument)?;
+        result.push((key.to_owned(), value.to_owned()));
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -159,7 +176,8 @@ mod tests {
             Ok(Command::Wallpaper(
                 114514,
                 Duration::new(5 * 60 * 60, 0),
-                false
+                false,
+                Vec::new()
             ))
         );
     }
@@ -173,6 +191,40 @@ mod tests {
         let cmd = "wait    ";
         assert_eq!(identify(cmd), Err(ParseError::NotEnoughArguments));
         let cmd = "goto some great place";
+        assert_eq!(identify(cmd), Err(ParseError::InvalidArgument));
+    }
+
+    #[test]
+    fn identify_properties() {
+        let cmd = "114514 15m dps=15 cup=superbigcup";
+        assert_eq!(
+            identify(cmd),
+            Ok(Command::Wallpaper(
+                114514,
+                Duration::from_secs(15 * 60),
+                false,
+                vec![
+                    (String::from("dps"), String::from("15")),
+                    (String::from("cup"), String::from("superbigcup"))
+                ]
+            ))
+        );
+        let cmd = "114514 # Very beautiful wallpaper";
+        assert_eq!(
+            identify(cmd),
+            Ok(Command::Wallpaper(114514, Duration::ZERO, true, vec![]))
+        );
+        let cmd = "114514 forever ooh=hoo";
+        assert_eq!(
+            identify(cmd),
+            Ok(Command::Wallpaper(
+                114514,
+                Duration::ZERO,
+                true,
+                vec![(String::from("ooh"), String::from("hoo")),]
+            ))
+        );
+        let cmd = "114514 5min some=ok hello kids I'm here to destroy the Earth";
         assert_eq!(identify(cmd), Err(ParseError::InvalidArgument));
     }
 }
