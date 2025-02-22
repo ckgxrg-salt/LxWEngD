@@ -25,7 +25,8 @@ Define a wallpaper in this format:
 ```
 `<wallpaper id>` must be specified, which is exactly what you will specify as in `linux-wallpaperengine`'s cmdline. View this id from Steam Workshop URL or anywhere you wish.   
 
-`[duration]` indicates how long this wallpaper should be displayed. Plain numbers will be treated as seconds, you may also use a value plus an unit such as `15m`, `1h`. If duration is not specified, it is equivalent as `forever`, which displays the wallpaper until the daemon quits. Of course this is essentially the end of the playlist.   
+`[duration]` indicates how long this wallpaper should be displayed. Plain numbers will be treated as seconds, you may also use a value plus an unit such as `15m`, `1h`. If duration is not specified, it is equivalent as `forever`, which displays the wallpaper until the daemon quits.   
+Note that `forever` does not necessarily means the end of playlist, if the child process failed or is killed externally due to OOM or else, the daemon can still progress forwards, generating an "engine died" warning instead.   
 
 TODO: Properties
 

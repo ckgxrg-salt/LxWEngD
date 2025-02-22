@@ -162,7 +162,7 @@ impl<'a> Runner<'a> {
                 }
             };
             match cmd {
-                Command::Wallpaper(id, duration) => {
+                Command::Wallpaper(id, duration, forever) => {
                     let cmd = wallpaper::get_cmd(
                         id,
                         self.cache_path,
@@ -179,6 +179,16 @@ impl<'a> Runner<'a> {
                         );
                         println!("Run: {}", cmd.to_cmdline_lossy());
                         thread::sleep(duration);
+                        continue;
+                    }
+                    if forever {
+                        let err = wallpaper::summon_forever(cmd);
+                        eprintln!(
+                            "{0} line {1}: {2}, skipping",
+                            self.file.to_string_lossy(),
+                            self.index,
+                            err
+                        );
                         continue;
                     }
                     if let Err(err) = wallpaper::summon(cmd, duration) {

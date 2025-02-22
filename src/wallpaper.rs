@@ -45,6 +45,15 @@ pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
     }
 }
 
+pub fn summon_forever(cmd: Exec) -> RuntimeError {
+    let Ok(mut proc) = cmd.popen() else {
+        return RuntimeError::EngineDied;
+    };
+    // This should block forever unless the child is killed externally
+    let _ = proc.wait();
+    RuntimeError::EngineDied
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

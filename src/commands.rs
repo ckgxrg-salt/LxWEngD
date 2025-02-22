@@ -11,7 +11,8 @@ use std::time::Duration;
 #[derive(Debug, PartialEq)]
 pub enum Command {
     /// Displays the wallpaper with given id for given duration.
-    Wallpaper(u32, Duration),
+    /// Last argument indicates whether this wallpaper will be displayed forever.
+    Wallpaper(u32, Duration, bool),
     /// Sleeps for given duration.
     Wait(Duration),
     /// Ends the playlist.
@@ -118,10 +119,16 @@ pub fn identify(str: &str) -> Result<Command, ParseError> {
             let id = value
                 .parse::<u32>()
                 .map_err(|_| ParseError::CommandNotFound)?;
-            let duration_str = segment.next().ok_or(ParseError::NotEnoughArguments)?;
-            let duration =
-                duration_str::parse(duration_str).map_err(|_| ParseError::InvalidArgument)?;
-            Ok(Command::Wallpaper(id, duration))
+            let duration_str = segment.next();
+            if let Some(value) = duration_str {
+                if value == "forever" {
+                    return Ok(Command::Wallpaper(id, Duration::ZERO, true));
+                }
+                let duration =
+                    duration_str::parse(value).map_err(|_| ParseError::InvalidArgument)?;
+                return Ok(Command::Wallpaper(id, duration, false));
+            }
+            Ok(Command::Wallpaper(id, Duration::ZERO, true))
         }
 
         _ => Err(ParseError::CommandNotFound),
@@ -149,7 +156,11 @@ mod tests {
         let cmd = "114514 5h";
         assert_eq!(
             identify(cmd),
-            Ok(Command::Wallpaper(114514, Duration::new(5 * 60 * 60, 0)))
+            Ok(Command::Wallpaper(
+                114514,
+                Duration::new(5 * 60 * 60, 0),
+                false
+            ))
         );
     }
 
