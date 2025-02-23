@@ -11,6 +11,7 @@ use crate::commands::{identify, Command};
 use crate::playlist;
 use crate::wallpaper;
 use crate::DaemonRequest;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::io::{BufRead, BufReader};
@@ -34,6 +35,7 @@ pub struct Runner<'a> {
     assets_path: Option<&'a Path>,
     stored_gotos: Vec<StoredGoto>,
     monitor: Option<String>,
+    default: HashMap<String, String>,
 }
 
 struct StoredGoto {
@@ -83,15 +85,14 @@ impl<'a> Runner<'a> {
             id,
             file,
             channel,
-            // This is the index of array, not the line number
             index: 0,
             search_path,
             cache_path,
             assets_path: None,
-            // Just a placeholder
             stored_gotos: Vec::new(),
             monitor: None,
             dry_run,
+            default: HashMap::new(),
         }
     }
 
@@ -169,6 +170,7 @@ impl<'a> Runner<'a> {
                         self.assets_path,
                         self.monitor.as_deref(),
                         &properties,
+                        &self.default,
                     );
                     if forever {
                         if self.dry_run {
@@ -291,6 +293,7 @@ impl<'a> Runner<'a> {
                     self.index = 0;
                     continue;
                 }
+                Command::Default(properties) => self.default = properties,
                 Command::Monitor(name) => {
                     if self.dry_run {
                         println!(

@@ -3,6 +3,7 @@
 //! Also provides a function to parse strings to commands.
 #![warn(clippy::pedantic)]
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -14,7 +15,7 @@ pub enum Command {
     /// Displays the wallpaper with given id for given duration.
     /// Third argument indicates whether this wallpaper will be displayed forever.
     /// Last arguments are a list of key-value pairs for recognised properties.
-    Wallpaper(u32, Duration, bool, Vec<(String, String)>),
+    Wallpaper(u32, Duration, bool, HashMap<String, String>),
     /// Sleeps for given duration.
     Wait(Duration),
     /// Ends the playlist.
@@ -27,6 +28,8 @@ pub enum Command {
     Summon(PathBuf),
     /// Changes the monitor the current runner operating on.
     Monitor(String),
+    /// Sets default properties for all wallpapers.
+    Default(HashMap<String, String>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -68,13 +71,6 @@ impl Display for ParseError {
 pub fn identify(str: &str) -> Result<Command, ParseError> {
     let mut segment = str.split_whitespace();
     match segment.next() {
-        Some("wait") => {
-            let duration_str = segment.next().ok_or(ParseError::NotEnoughArguments)?;
-            let duration =
-                duration_str::parse(duration_str).map_err(|_| ParseError::InvalidArgument)?;
-            Ok(Command::Wait(duration))
-        }
-
         Some("goto") => {
             let loc = segment
                 .next()
@@ -90,6 +86,12 @@ pub fn identify(str: &str) -> Result<Command, ParseError> {
         }
         Some("loop") => Ok(Command::Goto(1, 0)),
         Some("end") => Ok(Command::End),
+        Some("wait") => {
+            let duration_str = segment.next().ok_or(ParseError::NotEnoughArguments)?;
+            let duration =
+                duration_str::parse(duration_str).map_err(|_| ParseError::InvalidArgument)?;
+            Ok(Command::Wait(duration))
+        }
 
         Some("replace") => {
             let path = segment
@@ -106,6 +108,11 @@ pub fn identify(str: &str) -> Result<Command, ParseError> {
                 .parse::<PathBuf>()
                 .map_err(|_| ParseError::InvalidArgument)?;
             Ok(Command::Summon(path))
+        }
+
+        Some("default") => {
+            let properties = extract_properties(&mut segment)?;
+            Ok(Command::Default(properties))
         }
 
         Some("monitor") => {
@@ -133,21 +140,23 @@ pub fn identify(str: &str) -> Result<Command, ParseError> {
                     duration_str::parse(value).map_err(|_| ParseError::InvalidArgument)?;
                 return Ok(Command::Wallpaper(id, duration, false, properties));
             }
-            Ok(Command::Wallpaper(id, Duration::ZERO, true, Vec::new()))
+            Ok(Command::Wallpaper(id, Duration::ZERO, true, HashMap::new()))
         }
 
         _ => Err(ParseError::CommandNotFound),
     }
 }
 
-fn extract_properties(segment: &mut SplitWhitespace) -> Result<Vec<(String, String)>, ParseError> {
-    let mut result: Vec<(String, String)> = Vec::new();
+fn extract_properties(
+    segment: &mut SplitWhitespace,
+) -> Result<HashMap<String, String>, ParseError> {
+    let mut result = HashMap::new();
     for value in segment.by_ref() {
         if value.starts_with('#') {
             break;
         }
         let (key, value) = value.split_once('=').ok_or(ParseError::InvalidArgument)?;
-        result.push((key.to_owned(), value.to_owned()));
+        result.insert(key.to_owned(), value.to_owned());
     }
     Ok(result)
 }
@@ -177,7 +186,7 @@ mod tests {
                 114514,
                 Duration::new(5 * 60 * 60, 0),
                 false,
-                Vec::new()
+                HashMap::new()
             ))
         );
     }
@@ -197,32 +206,34 @@ mod tests {
     #[test]
     fn identify_properties() {
         let cmd = "114514 15m dps=15 cup=superbigcup";
+        let mut expected = HashMap::new();
+        expected.insert(String::from("dps"), String::from("15"));
+        expected.insert(String::from("cup"), String::from("superbigcup"));
         assert_eq!(
             identify(cmd),
             Ok(Command::Wallpaper(
                 114514,
                 Duration::from_secs(15 * 60),
                 false,
-                vec![
-                    (String::from("dps"), String::from("15")),
-                    (String::from("cup"), String::from("superbigcup"))
-                ]
+                expected
             ))
         );
         let cmd = "114514 # Very beautiful wallpaper";
-        assert_eq!(
-            identify(cmd),
-            Ok(Command::Wallpaper(114514, Duration::ZERO, true, vec![]))
-        );
-        let cmd = "114514 forever ooh=hoo";
         assert_eq!(
             identify(cmd),
             Ok(Command::Wallpaper(
                 114514,
                 Duration::ZERO,
                 true,
-                vec![(String::from("ooh"), String::from("hoo")),]
+                HashMap::new()
             ))
+        );
+        let cmd = "114514 forever ooh=hoo";
+        let mut expected = HashMap::new();
+        expected.insert(String::from("ooh"), String::from("hoo"));
+        assert_eq!(
+            identify(cmd),
+            Ok(Command::Wallpaper(114514, Duration::ZERO, true, expected))
         );
         let cmd = "114514 5min some=ok hello kids I'm here to destroy the Earth";
         assert_eq!(identify(cmd), Err(ParseError::InvalidArgument));

@@ -44,6 +44,17 @@ Here's a list of general properties:
 Also, see `linux-wallpaperengine --list-properties <wallpaper id>` for a list of other properties specific to wallpapers.   
 Note that **neither general properties nor specific properties have their value checked!**. So if you passed invalid values, LxWEngD will simply pass them as-is to `linux-wallpaperengine`, by which you will likely receive an "engine died" warning.   
 
+`default` command may be used to set up default properties of wallpapers.   
+```
+default [property1=value] [property2=value] ...
+```
+Each default will clear previously defined default properties, so you cannot write
+```
+default a=b 
+default c=d
+```
+instead of `default a=b c=d`.   
+
 There are also some other commands to use in the file:
 - `wait <duration>` pauses the daemon's activity for the given duration. Note that when the daemon is displaying a wallpaper, it will not execute the next command until the end of the current display time ends. So use this when you want some space between wallpapers where `linux-wallpaperengine` will **not** be running.
 - `end` makes the daemon quit immediately. It's possible to write lines after `end`, if you feel boring.
@@ -52,6 +63,7 @@ There are also some other commands to use in the file:
 - `replace <playlist file>` changes the playlist the daemon is currently playing, starting from line 1 of the given playlist. If the given playlist cannot be found, then this line will be similar to `end`.
 - `summon <playlist file>` is similar to `replace`, but instead of changing the playlist, it opens a new thread running the indicated playlist. So if the given playlist failed or quitted, the original thread is unaffected.
 - `monitor <monitor id>` is as stated above, changes the monitor the playlist will be displayed on.
+- `default [property=value]...` is described above.
 
 If any command contains invalid value, or has bad syntax, the daemon will skip that line and generate a warning only.   
 If `linux-wallpaperengine` reports an error, the daemon will forward the error and jump to the next command. Because of this, the result of `--dry-run` only reflects the optimal situation, since killing the `linux-wallpaperengine` subprocess externally will also trigger this.   
