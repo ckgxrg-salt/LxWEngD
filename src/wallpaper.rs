@@ -45,6 +45,11 @@ fn intersect<'a>(
 fn handle_properties(properties: &HashMap<String, String>, mut engine: Exec) -> Exec {
     for (key, value) in properties {
         match key.as_str() {
+            "silent" => {
+                if value.parse::<bool>().is_ok_and(|value| value) {
+                    engine = engine.arg("--silent");
+                }
+            }
             "audio" => {
                 if value.parse::<bool>().is_ok_and(|value| !value) {
                     engine = engine.arg("--no-audio-processing");

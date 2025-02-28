@@ -30,15 +30,15 @@ impl Display for PlaylistError {
 /// If none of these approaches can find a playlist file, returns `PlaylistError::FileNotFound`.
 pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> {
     // Fully qualified path
-    if let Ok(content) = File::open(filename) {
-        return Ok(content);
+    if filename.is_file() {
+        return Ok(File::open(filename).map_err(|_| PlaylistError::FileNotFound))?;
     }
 
     // Relative to default with extension
     let mut real_path = search_path.to_path_buf();
     real_path.push(filename);
-    if let Ok(content) = File::open(real_path) {
-        return Ok(content);
+    if real_path.is_file() {
+        return Ok(File::open(real_path).map_err(|_| PlaylistError::FileNotFound))?;
     }
 
     // Relative to default without extension
@@ -47,8 +47,8 @@ pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> 
     let mut temp = real_path.into_os_string();
     temp.push(".playlist");
     let real_path = PathBuf::from(temp);
-    if let Ok(content) = File::open(real_path) {
-        return Ok(content);
+    if real_path.is_file() {
+        return Ok(File::open(real_path).map_err(|_| PlaylistError::FileNotFound))?;
     }
 
     Err(PlaylistError::FileNotFound)

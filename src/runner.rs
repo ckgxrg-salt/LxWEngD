@@ -128,7 +128,7 @@ impl<'a> Runner<'a> {
             .lines()
             .map(|line| {
                 line.unwrap_or_else(|err| {
-                    eprintln!(
+                    log::warn!(
                         "\"{0}\" line {1}: {2}, ignoring",
                         self.file.to_str().unwrap(),
                         self.index,
@@ -153,7 +153,7 @@ impl<'a> Runner<'a> {
             let cmd = match identify(current_line) {
                 Ok(cmd) => cmd,
                 Err(err) => {
-                    eprintln!(
+                    log::warn!(
                         "\"{0}\" line {1}: {2}, skipping",
                         self.file.to_str().unwrap(),
                         self.index,
@@ -174,18 +174,18 @@ impl<'a> Runner<'a> {
                     );
                     if forever {
                         if self.dry_run {
-                            println!(
+                            log::trace!(
                                 "{0} line {1}: Display wallpaper ID: {2} forever",
                                 self.file.to_string_lossy(),
                                 self.index,
                                 id,
                             );
-                            println!("Run: {}", cmd.to_cmdline_lossy());
+                            log::trace!("Run: {}", cmd.to_cmdline_lossy());
                             self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
                             break;
                         }
                         let err = wallpaper::summon_forever(cmd);
-                        eprintln!(
+                        log::warn!(
                             "{0} line {1}: {2}, skipping",
                             self.file.to_string_lossy(),
                             self.index,
@@ -194,19 +194,19 @@ impl<'a> Runner<'a> {
                         continue;
                     }
                     if self.dry_run {
-                        println!(
+                        log::trace!(
                             "{0} line {1}: Display wallpaper ID: {2} for {3}",
                             self.file.to_string_lossy(),
                             self.index,
                             id,
                             duration.human_format()
                         );
-                        println!("Run: {}", cmd.to_cmdline_lossy());
+                        log::trace!("Run: {}", cmd.to_cmdline_lossy());
                         thread::sleep(duration);
                         continue;
                     }
                     if let Err(err) = wallpaper::summon(cmd, duration) {
-                        eprintln!(
+                        log::warn!(
                             "{0} line {1}: {2}, skipping",
                             self.file.to_string_lossy(),
                             self.index,
@@ -217,7 +217,7 @@ impl<'a> Runner<'a> {
                 }
                 Command::Wait(duration) => {
                     if self.dry_run {
-                        println!(
+                        log::trace!(
                             "{0} line {1}: Sleep for {2}",
                             self.file.to_string_lossy(),
                             self.index,
@@ -228,7 +228,7 @@ impl<'a> Runner<'a> {
                 }
                 Command::Goto(line, count) => {
                     if self.dry_run {
-                        println!(
+                        log::trace!(
                             "{0} line {1}: Goto line {2}",
                             self.file.to_string_lossy(),
                             self.index,
@@ -244,7 +244,7 @@ impl<'a> Runner<'a> {
                 }
                 Command::Summon(path) => {
                     if self.dry_run {
-                        println!(
+                        log::trace!(
                             "{0} line {1}: Summon a new runner for playlist {2}",
                             self.file.to_string_lossy(),
                             self.index,
@@ -255,7 +255,7 @@ impl<'a> Runner<'a> {
                 }
                 Command::Replace(path) => {
                     if self.dry_run {
-                        println!(
+                        log::trace!(
                             "{0} line {1}: Replace the playlist with {2}",
                             self.file.to_string_lossy(),
                             self.index,
@@ -278,7 +278,7 @@ impl<'a> Runner<'a> {
                         .lines()
                         .map(|line| {
                             line.unwrap_or_else(|err| {
-                                eprintln!(
+                                log::warn!(
                                     "\"{0}\" line {1}: {2}, ignoring",
                                     self.file.to_str().unwrap(),
                                     self.index,
@@ -296,7 +296,7 @@ impl<'a> Runner<'a> {
                 Command::Default(properties) => self.default = properties,
                 Command::Monitor(name) => {
                     if self.dry_run {
-                        println!(
+                        log::trace!(
                             "{0} line {1}: Operate on monitor {2}",
                             self.file.to_string_lossy(),
                             self.index,
@@ -307,7 +307,7 @@ impl<'a> Runner<'a> {
                 }
                 Command::End => {
                     if self.dry_run {
-                        println!(
+                        log::trace!(
                             "{0} line {1}: Reached the end",
                             self.file.to_string_lossy(),
                             self.index
@@ -334,18 +334,18 @@ impl<'a> Runner<'a> {
             if existing.remaining <= 1 {
                 self.stored_gotos.remove(index);
                 if self.dry_run {
-                    println!("This goto is no longer effective");
+                    log::trace!("This goto is no longer effective");
                 }
             } else {
                 existing.remaining -= 1;
                 self.index = line - 1;
                 if self.dry_run {
-                    println!("Remaining times for this goto: {0}", existing.remaining);
+                    log::trace!("Remaining times for this goto: {0}", existing.remaining);
                 }
             }
         } else {
             if self.dry_run {
-                println!("Remaining times for this goto: {count}");
+                log::trace!("Remaining times for this goto: {count}");
             }
             let cached = StoredGoto {
                 location: line,

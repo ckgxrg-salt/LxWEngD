@@ -108,7 +108,7 @@ fn sys_config_dir() -> Result<PathBuf, RuntimeError> {
 lazy_static! {
     static ref Cfg: Config = parse();
     static ref SearchPath: PathBuf = sys_config_dir().unwrap_or_else(|err| {
-        eprintln!("{err}");
+        log::warn!("{err}");
         // If fully qualified name is passed, this value does not matter
         PathBuf::from("")
     });
@@ -116,10 +116,11 @@ lazy_static! {
 }
 
 fn main() -> Result<(), RuntimeError> {
+    env_logger::init();
     // If cache directory does not exist, create it
     if !CachePath.is_dir() {
         if let Err(err) = std::fs::create_dir(CachePath.as_path()) {
-            eprintln!("Failed to create the cache directory: {err}");
+            log::error!("Failed to create the cache directory: {err}");
             return Err(RuntimeError::InitFailed);
         };
     }
@@ -142,7 +143,7 @@ fn main() -> Result<(), RuntimeError> {
     // Listen to commands
     while !runners.is_empty() {
         let Ok(message) = rx.recv() else {
-            eprintln!("Channel to runners has closed, aborting");
+            log::error!("Channel to runners has closed, aborting");
             break;
         };
         match message {
@@ -150,7 +151,7 @@ fn main() -> Result<(), RuntimeError> {
                 runners.remove(&id);
             }
             DaemonRequest::Abort(id, error) => {
-                eprintln!("Runner {id} aborted with error: {error}");
+                log::warn!("Runner {id} aborted with error: {error}");
                 runners.remove(&id);
             }
             DaemonRequest::NewRunner(playlist) => {
@@ -169,12 +170,12 @@ fn main() -> Result<(), RuntimeError> {
                         .name(format!("Runner {id}"))
                         .spawn(move || runner.run())
                     else {
-                        eprintln!("Failed to summon new runner due to OS error");
+                        log::warn!("Failed to summon new runner due to OS error");
                         continue;
                     };
                     runners.insert(id, thread);
                 } else {
-                    eprintln!("Cannot allocate an id for new runner, perhaps upper limit has been reached?");
+                    log::warn!("Cannot allocate an id for new runner, perhaps upper limit has been reached?");
                 }
             }
         };
