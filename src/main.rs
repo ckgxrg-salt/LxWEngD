@@ -15,11 +15,11 @@
 
 use clap::Parser;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+use std::{collections::HashMap, sync::mpsc::Sender};
 
 use lxwengd::{DaemonRequest, Runner, RuntimeError};
 
@@ -44,7 +44,7 @@ struct Cli {
         value_name = "PATH",
         help = "Path to the linux-wallpaperengine binary, will search in $PATH if not given."
     }]
-    binary: Option<PathBuf>,
+    binary: Option<String>,
 
     #[arg{
         short = 'a',
@@ -64,7 +64,7 @@ struct Cli {
 struct Config {
     playlist: PathBuf,
     assets_path: Option<PathBuf>,
-    binary: Option<PathBuf>,
+    binary: Option<String>,
     dry_run: bool,
 }
 fn parse() -> Config {
@@ -132,6 +132,25 @@ fn setup_logger() -> Result<(), fern::InitError> {
     Ok(())
 }
 
+/// Creates a new runner operating the given playlist
+fn summon_runner(
+    id: u8,
+    playlist: PathBuf,
+    channel: Sender<DaemonRequest>,
+) -> Result<thread::JoinHandle<()>, RuntimeError> {
+    let mut runner = Runner::new(0, playlist, &SearchPath, &CachePath, channel, Cfg.dry_run);
+    runner.assets_path(Cfg.assets_path.as_deref());
+    runner.binary(Cfg.binary.as_deref());
+    let Ok(thread) = thread::Builder::new()
+        .name(format!("Runner {id}"))
+        .spawn(move || runner.run())
+    else {
+        log::warn!("Failed to summon new runner due to OS error");
+        return Err(RuntimeError::InitFailed);
+    };
+    Ok(thread)
+}
+
 // Cli main entry
 fn main() -> Result<(), RuntimeError> {
     // If cache directory does not exist, create it
@@ -146,25 +165,9 @@ fn main() -> Result<(), RuntimeError> {
 
     // Begin creating first runner
     let (tx, rx) = mpsc::channel::<DaemonRequest>();
-    let mut first_runner = Runner::new(
-        0,
-        Cfg.playlist.clone(),
-        &SearchPath,
-        &CachePath,
-        tx.clone(),
-        Cfg.dry_run,
-    );
-    first_runner.assets_path(Cfg.assets_path.as_deref());
     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
 
-    let Ok(thread) = thread::Builder::new()
-        .name("Runner 0".to_string())
-        .spawn(move || first_runner.run())
-    else {
-        log::warn!("Failed to summon new runner due to OS error");
-        return Err(RuntimeError::InitFailed);
-    };
-    runners.insert(0, thread);
+    runners.insert(0, summon_runner(0, Cfg.playlist.clone(), tx.clone())?);
 
     // Listen to commands
     while !runners.is_empty() {
@@ -182,19 +185,7 @@ fn main() -> Result<(), RuntimeError> {
             }
             DaemonRequest::NewRunner(playlist) => {
                 if let Ok(id) = available_id(&runners) {
-                    let mut runner = Runner::new(
-                        id,
-                        playlist,
-                        &SearchPath,
-                        &CachePath,
-                        tx.clone(),
-                        Cfg.dry_run,
-                    );
-                    runner.assets_path(Cfg.assets_path.as_deref());
-                    let Ok(thread) = thread::Builder::new()
-                        .name(format!("Runner {id}"))
-                        .spawn(move || runner.run())
-                    else {
+                    let Ok(thread) = summon_runner(id, playlist, tx.clone()) else {
                         log::warn!("Failed to summon new runner due to OS error");
                         continue;
                     };

@@ -32,6 +32,7 @@ pub struct Runner<'a> {
     // Runtime info
     search_path: &'a Path,
     cache_path: &'a Path,
+    binary: Option<&'a str>,
     assets_path: Option<&'a Path>,
     stored_gotos: Vec<StoredGoto>,
     monitor: Option<String>,
@@ -88,6 +89,7 @@ impl<'a> Runner<'a> {
             index: 0,
             search_path,
             cache_path,
+            binary: None,
             assets_path: None,
             stored_gotos: Vec::new(),
             monitor: None,
@@ -99,6 +101,11 @@ impl<'a> Runner<'a> {
     /// Sets the assets path of this runner
     pub fn assets_path(&mut self, path: Option<&'a Path>) -> &mut Self {
         self.assets_path = path;
+        self
+    }
+    /// Sets the binary path of this runner
+    pub fn binary(&mut self, path: Option<&'a str>) -> &mut Self {
+        self.binary = path;
         self
     }
 
@@ -172,6 +179,7 @@ impl<'a> Runner<'a> {
                     let cmd = wallpaper::get_cmd(
                         id,
                         self.cache_path,
+                        self.binary,
                         self.assets_path,
                         self.monitor.as_deref(),
                         &properties,

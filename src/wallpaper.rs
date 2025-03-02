@@ -4,6 +4,7 @@
 #![warn(clippy::pedantic)]
 
 use crate::runner::RuntimeError;
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -12,12 +13,13 @@ use subprocess::{Exec, NullFile};
 pub fn get_cmd(
     id: u32,
     cache_path: &Path,
+    binary: Option<&str>,
     assets_path: Option<&Path>,
     monitor: Option<&str>,
     properties: &HashMap<String, String>,
     defaults: &HashMap<String, String>,
 ) -> Exec {
-    let mut engine = Exec::cmd("linux-wallpaperengine");
+    let mut engine = Exec::cmd(binary.unwrap_or("linux-wallpaperengine"));
     if let Some(value) = assets_path {
         engine = engine.arg("--assets-dir").arg(value);
     }
@@ -128,6 +130,7 @@ mod tests {
         let cmd = get_cmd(
             114514,
             &PathBuf::from("/tmp/lxwengd-dev"),
+            None,
             Some(&PathBuf::from("ng")),
             Some("Headless-1"),
             &HashMap::new(),
