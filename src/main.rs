@@ -25,7 +25,7 @@ use lxwengd::{DaemonRequest, Runner, RuntimeError};
 
 #[derive(Parser)]
 #[command(
-    version = "0.1.1",
+    version = "0.1.3",
     about="A daemon that adds playlists to linux-wallpaperengine",
     long_about = None
 )]
@@ -115,15 +115,34 @@ lazy_static! {
     static ref CachePath: PathBuf = sys_cache_dir();
 }
 
+// logging
+fn setup_logger() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {} {}] {}",
+                chrono::Local::now().format("%H:%M:%S"),
+                thread::current().name().unwrap(),
+                record.level(),
+                message
+            ));
+        })
+        .chain(std::io::stdout())
+        .apply()?;
+    Ok(())
+}
+
+// Cli main entry
 fn main() -> Result<(), RuntimeError> {
-    env_logger::init();
     // If cache directory does not exist, create it
     if !CachePath.is_dir() {
         if let Err(err) = std::fs::create_dir(CachePath.as_path()) {
-            log::error!("Failed to create the cache directory: {err}");
+            eprintln!("Failed to create the cache directory: {err}");
             return Err(RuntimeError::InitFailed);
         };
     }
+
+    setup_logger().map_err(|_| RuntimeError::InitFailed)?;
 
     // Begin creating first runner
     let (tx, rx) = mpsc::channel::<DaemonRequest>();
@@ -137,13 +156,20 @@ fn main() -> Result<(), RuntimeError> {
     );
     first_runner.assets_path(Cfg.assets_path.as_deref());
     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
-    let first = thread::spawn(move || first_runner.run());
-    runners.insert(0, first);
+
+    let Ok(thread) = thread::Builder::new()
+        .name("Runner 0".to_string())
+        .spawn(move || first_runner.run())
+    else {
+        log::warn!("Failed to summon new runner due to OS error");
+        return Err(RuntimeError::InitFailed);
+    };
+    runners.insert(0, thread);
 
     // Listen to commands
     while !runners.is_empty() {
         let Ok(message) = rx.recv() else {
-            log::error!("Channel to runners has closed, aborting");
+            eprintln!("Channel to runners has closed, aborting");
             break;
         };
         match message {
@@ -151,7 +177,7 @@ fn main() -> Result<(), RuntimeError> {
                 runners.remove(&id);
             }
             DaemonRequest::Abort(id, error) => {
-                log::warn!("Runner {id} aborted with error: {error}");
+                eprintln!("Runner {id} aborted with error: {error}");
                 runners.remove(&id);
             }
             DaemonRequest::NewRunner(playlist) => {
@@ -165,7 +191,6 @@ fn main() -> Result<(), RuntimeError> {
                         Cfg.dry_run,
                     );
                     runner.assets_path(Cfg.assets_path.as_deref());
-                    let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
                     let Ok(thread) = thread::Builder::new()
                         .name(format!("Runner {id}"))
                         .spawn(move || runner.run())
@@ -175,7 +200,7 @@ fn main() -> Result<(), RuntimeError> {
                     };
                     runners.insert(id, thread);
                 } else {
-                    log::warn!("Cannot allocate an id for new runner, perhaps upper limit has been reached?");
+                    eprintln!("Cannot allocate an id for new runner, perhaps upper limit has been reached?");
                 }
             }
         };

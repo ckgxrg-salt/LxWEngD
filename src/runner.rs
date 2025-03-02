@@ -143,6 +143,11 @@ impl<'a> Runner<'a> {
         loop {
             let Some(current_line) = lines.get(self.index) else {
                 self.index = 0;
+                if self.dry_run {
+                    log::trace!("This playlist is infinite, exiting",);
+                    self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
+                    break;
+                }
                 continue;
             };
             self.index += 1;
@@ -202,7 +207,6 @@ impl<'a> Runner<'a> {
                             duration.human_format()
                         );
                         log::trace!("Run: {}", cmd.to_cmdline_lossy());
-                        thread::sleep(duration);
                         continue;
                     }
                     if let Err(err) = wallpaper::summon(cmd, duration) {
@@ -223,6 +227,7 @@ impl<'a> Runner<'a> {
                             self.index,
                             duration.human_format()
                         );
+                        continue;
                     }
                     thread::sleep(duration);
                 }
@@ -234,6 +239,9 @@ impl<'a> Runner<'a> {
                             self.index,
                             line
                         );
+                        if count == 0 {
+                            log::trace!("This goto is infinite, exiting",);
+                        }
                     }
                     if count != 0 {
                         self.cache_goto(line, count);
@@ -293,7 +301,17 @@ impl<'a> Runner<'a> {
                     self.index = 0;
                     continue;
                 }
-                Command::Default(properties) => self.default = properties,
+                Command::Default(properties) => {
+                    if self.dry_run {
+                        log::trace!(
+                            "{0} line {1}: Set default properties: {2}",
+                            self.file.to_string_lossy(),
+                            self.index,
+                            wallpaper::pretty_print(&properties)
+                        );
+                    }
+                    self.default = properties;
+                }
                 Command::Monitor(name) => {
                     if self.dry_run {
                         log::trace!(

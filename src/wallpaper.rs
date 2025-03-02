@@ -81,6 +81,15 @@ fn handle_properties(properties: &HashMap<String, String>, mut engine: Exec) -> 
     engine
 }
 
+/// Output properties in form or key-value pairs for dry-run
+pub fn pretty_print(properties: &HashMap<String, String>) -> String {
+    let mut result = String::new();
+    for (key, value) in properties {
+        result.push_str(&format!("{key}={value} "));
+    }
+    result
+}
+
 pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
     let Ok(mut proc) = cmd.popen() else {
         return Err(RuntimeError::EngineDied);
