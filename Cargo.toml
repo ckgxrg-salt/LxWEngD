@@ -15,3 +15,6 @@ subprocess = "0.2.9"
 version = "0.4.40"
 default-features = false
 features = [ "std", "clock" ]
+
+[dev-dependencies]
+env_logger = "0.11.6"
