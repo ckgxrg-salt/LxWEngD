@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 pub mod commands;
 pub mod playlist;
-//pub mod resume;
+pub mod resume;
 pub mod runner;
 
 pub use runner::{Runner, RuntimeError};

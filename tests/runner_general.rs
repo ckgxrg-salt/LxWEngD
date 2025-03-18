@@ -25,7 +25,16 @@ fn default_playlist() {
     if let DaemonRequest::Exit(0) = result {
         common::finalise();
         assert_eq!(
-            "   ".to_string(),
+            "default.playlist line 1: Display wallpaper ID: 1 for 15min
+Run: linux-wallpaperengine 1
+default.playlist line 2: Display wallpaper ID: 2 for 1h
+Run: linux-wallpaperengine 2
+default.playlist line 3: Display wallpaper ID: 3 for 6min
+Run: linux-wallpaperengine 3
+default.playlist line 4: Sleep for 5min
+default.playlist line 5: Reached the end
+"
+            .to_string(),
             common::Captured
                 .clone()
                 .read()
