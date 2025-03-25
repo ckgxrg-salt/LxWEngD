@@ -121,60 +121,17 @@ impl<'a> Runner<'a> {
     /// However, if the channel is already closed, it's impossible to make a graceful exit since
     /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
     pub fn run(&mut self) {
-        let Ok(mut raw_file) = playlist::find(&self.file, self.search_path) else {
-            // Aborts if no file found
-            self.channel
-                .send(DaemonRequest::Abort(
-                    self.id,
-                    RuntimeError::FileNotFound(self.file.clone()),
-                ))
-                .unwrap();
-            return;
-        };
-        let mut lines: Vec<String> = BufReader::new(&raw_file)
-            .lines()
-            .map(|line| {
-                line.unwrap_or_else(|err| {
-                    log::warn!(
-                        "\"{0}\" line {1}: {2}, ignoring",
-                        self.file.to_str().unwrap(),
-                        self.index,
-                        err
-                    );
-                    String::new()
-                })
-                .trim()
-                .to_string()
-            })
-            .collect();
+        let commands = self.init().iter().cycle();
         loop {
-            let Some(current_line) = lines.get(self.index) else {
-                self.index = 0;
+            let Some((line_num, command)) = commands.next() else {
                 if self.dry_run {
                     log::trace!("This playlist is infinite, exiting",);
                     self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
                     break;
-                }
+                };
                 continue;
             };
-            self.index += 1;
-            // Ignore comments
-            if current_line.starts_with('#') || current_line.is_empty() {
-                continue;
-            };
-            let cmd = match identify(current_line) {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    log::warn!(
-                        "\"{0}\" line {1}: {2}, skipping",
-                        self.file.to_str().unwrap(),
-                        self.index,
-                        err
-                    );
-                    continue;
-                }
-            };
-            match cmd {
+            match command {
                 Command::Wallpaper(id, duration, forever, properties) => {
                     let cmd = wallpaper::get_cmd(
                         id,

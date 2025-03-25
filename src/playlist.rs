@@ -1,10 +1,14 @@
 //! Finds playlist files in some given search path.
 #![warn(clippy::pedantic)]
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+
+use crate::commands::{identify, Command};
 
 #[derive(Debug, PartialEq)]
 pub enum PlaylistError {
@@ -52,6 +56,50 @@ pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> 
     }
 
     Err(PlaylistError::FileNotFound)
+}
+
+/// Parses a playlist file and generates a list of [`Command`]
+/// This process will load the playlist file into memory, parse it, and generate a list of
+/// [`Command`].
+pub fn parse(path: &Path, file: &File) -> HashMap<usize, Command> {
+    let mut commands: HashMap<usize, Command> = HashMap::new();
+    let lines: Vec<String> = BufReader::new(file)
+        .lines()
+        .enumerate()
+        .map(|(num, line)| {
+            line.unwrap_or_else(|err| {
+                log::warn!(
+                    "\"{0}\" line {1}: {2}, ignoring",
+                    path.to_str().unwrap(),
+                    num,
+                    err
+                );
+                String::new()
+            })
+            .trim()
+            .to_string()
+        })
+        .collect();
+    for (num, each) in lines.iter().enumerate() {
+        // Ignore comments
+        if each.starts_with('#') || each.is_empty() {
+            continue;
+        };
+        match identify(each) {
+            Ok(cmd) => {
+                commands.insert(num, cmd);
+            }
+            Err(err) => {
+                log::warn!(
+                    "\"{0}\" line {1}: {2}, skipping",
+                    path.to_str().unwrap(),
+                    num,
+                    err
+                );
+            }
+        };
+    }
+    commands
 }
 
 #[cfg(test)]
