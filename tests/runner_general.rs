@@ -11,15 +11,9 @@ mod common;
 fn default_playlist() {
     common::setup();
     let (tx, rx) = mpsc::channel();
-    let mut runner = Runner::new(
-        0,
-        PathBuf::from("default.playlist"),
-        &common::SearchPath,
-        &common::CachePath,
-        tx,
-        true,
-    );
-    runner.run();
+    let mut runner = Runner::new(0, &common::SearchPath, &common::CachePath, tx);
+    runner.init(PathBuf::from("default.playlist"));
+    runner.dry_run();
 
     let result = rx.recv().expect("Failed to receive message");
     if let DaemonRequest::Exit(0) = result {

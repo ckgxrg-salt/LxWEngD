@@ -7,27 +7,26 @@
 
 use duration_str::HumanFormat;
 
-use crate::commands::{identify, Command};
+use crate::commands::Command;
 use crate::playlist;
 use crate::wallpaper;
 use crate::DaemonRequest;
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 pub struct Runner<'a> {
     // Basic info
     id: u8,
     file: PathBuf,
+    commands: HashMap<usize, Command>,
     index: usize,
     channel: mpsc::Sender<DaemonRequest>,
-
-    // Flag
-    dry_run: bool,
 
     // Runtime info
     search_path: &'a Path,
@@ -76,24 +75,22 @@ impl<'a> Runner<'a> {
     #[must_use]
     pub fn new(
         id: u8,
-        file: PathBuf,
         search_path: &'a Path,
         cache_path: &'a Path,
         channel: mpsc::Sender<DaemonRequest>,
-        dry_run: bool,
     ) -> Self {
         Self {
             id,
-            file,
             channel,
+            file: PathBuf::new(),
             index: 0,
             search_path,
             cache_path,
             binary: None,
             assets_path: None,
+            commands: HashMap::new(),
             stored_gotos: Vec::new(),
             monitor: None,
-            dry_run,
             default: HashMap::new(),
         }
     }
@@ -109,7 +106,34 @@ impl<'a> Runner<'a> {
         self
     }
 
-    /// The thread main method.
+    /// Sets the playlist file of this runner.
+    ///
+    /// # Panics
+    /// When the runner needs to report to the main thread using its channel, but the
+    /// channel is already closed, panic will occur.   
+    /// However, if the channel is already closed, it's impossible to make a graceful exit since
+    /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
+    pub fn init(&mut self, path: PathBuf) -> &mut Self {
+        let Ok(file) = playlist::find(&path, self.search_path) else {
+            log::error!("Cannot find playlist file {}", path.to_string_lossy());
+            return self;
+        };
+        self.commands = playlist::parse(&path, &file);
+        self.file = path;
+        self
+    }
+
+    /// Starts the job of the runner.
+    /// This is just a wrapper that determines whether a Runner normally runs or dry-runs.
+    pub fn dispatch(&mut self, dry_run: bool) {
+        if dry_run {
+            self.dry_run();
+        } else {
+            self.run();
+        }
+    }
+
+    /// The main runner method.
     ///
     /// # Errors
     /// Errors that will halt the runner will be reported using [`DaemonRequest::Abort`].
@@ -121,186 +145,275 @@ impl<'a> Runner<'a> {
     /// However, if the channel is already closed, it's impossible to make a graceful exit since
     /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
     pub fn run(&mut self) {
-        let commands = self.init().iter().cycle();
+        if self.commands.is_empty() {
+            log::error!("This playlist is blank, exiting");
+            return;
+        }
+        // We cannot modify the Runner state inside the `match` block, so we save the information and do it
+        // later.
+        let mut replace: Option<PathBuf> = None;
+
         loop {
-            let Some((line_num, command)) = commands.next() else {
-                if self.dry_run {
-                    log::trace!("This playlist is infinite, exiting",);
-                    self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
-                    break;
-                };
+            let Some(current_cmd) = self.commands.get(&self.index) else {
+                log::error!("Unknown error when processing current command, skipping");
                 continue;
             };
-            match command {
+            self.index += 1;
+            if self.index >= self.commands.len() {
+                self.index = 0;
+            }
+            match current_cmd {
                 Command::Wallpaper(id, duration, forever, properties) => {
-                    let cmd = wallpaper::get_cmd(
-                        id,
-                        self.cache_path,
-                        self.binary,
-                        self.assets_path,
-                        self.monitor.as_deref(),
-                        &properties,
-                        &self.default,
-                    );
-                    if forever {
-                        if self.dry_run {
-                            log::trace!(
-                                "{0} line {1}: Display wallpaper ID: {2} forever",
-                                self.file.to_string_lossy(),
-                                self.index,
-                                id,
-                            );
-                            log::trace!("Run: {}", cmd.to_cmdline_lossy());
-                            self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
-                            break;
-                        }
-                        let err = wallpaper::summon_forever(cmd);
-                        log::warn!(
-                            "{0} line {1}: {2}, skipping",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            err
-                        );
-                        continue;
-                    }
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Display wallpaper ID: {2} for {3}",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            id,
-                            duration.human_format()
-                        );
-                        log::trace!("Run: {}", cmd.to_cmdline_lossy());
-                        continue;
-                    }
-                    if let Err(err) = wallpaper::summon(cmd, duration) {
-                        log::warn!(
-                            "{0} line {1}: {2}, skipping",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            err
-                        );
-                        continue;
-                    };
+                    self.summon_wallpaper(*id, *duration, *forever, properties);
                 }
                 Command::Wait(duration) => {
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Sleep for {2}",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            duration.human_format()
-                        );
-                        continue;
-                    }
-                    thread::sleep(duration);
+                    thread::sleep(*duration);
                 }
                 Command::Goto(line, count) => {
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Goto line {2}",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            line
-                        );
-                        if count == 0 {
-                            log::trace!("This goto is infinite, exiting",);
+                    if *count == 0 {
+                        self.index = line - 1;
+                    } else if let Some(index) = self.search_cached_gotos(*line) {
+                        let existing = self.stored_gotos.get_mut(index).unwrap();
+                        if existing.remaining <= 1 {
+                            self.stored_gotos.remove(index);
+                        } else {
+                            existing.remaining -= 1;
+                            self.index = line - 1;
                         }
-                    }
-                    if count != 0 {
-                        self.cache_goto(line, count);
                     } else {
+                        let cached = StoredGoto {
+                            location: *line,
+                            remaining: *count,
+                        };
+                        self.stored_gotos.push(cached);
                         self.index = line - 1;
                     }
-                    continue;
                 }
                 Command::Summon(path) => {
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Summon a new runner for playlist {2}",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            path.to_string_lossy()
-                        );
-                    }
-                    self.channel.send(DaemonRequest::NewRunner(path)).unwrap();
+                    self.channel
+                        .send(DaemonRequest::NewRunner(path.clone()))
+                        .unwrap();
                 }
                 Command::Replace(path) => {
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Replace the playlist with {2}",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            path.to_string_lossy()
-                        );
-                    }
-                    self.file = path;
-                    let Ok(new_file) = playlist::find(&self.file, self.search_path) else {
-                        // Aborts if no file found
-                        self.channel
-                            .send(DaemonRequest::Abort(
-                                self.id,
-                                RuntimeError::FileNotFound(self.file.clone()),
-                            ))
-                            .unwrap();
-                        return;
-                    };
-                    raw_file = new_file;
-                    lines = BufReader::new(&raw_file)
-                        .lines()
-                        .map(|line| {
-                            line.unwrap_or_else(|err| {
-                                log::warn!(
-                                    "\"{0}\" line {1}: {2}, ignoring",
-                                    self.file.to_str().unwrap(),
-                                    self.index,
-                                    err
-                                );
-                                String::new()
-                            })
-                            .trim()
-                            .to_string()
-                        })
-                        .collect();
-                    self.index = 0;
-                    continue;
+                    replace = Some(path.clone());
+                    break;
                 }
                 Command::Default(properties) => {
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Set default properties: {2}",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            wallpaper::pretty_print(&properties)
-                        );
-                    }
-                    self.default = properties;
+                    self.default = properties.to_owned();
                 }
                 Command::Monitor(name) => {
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Operate on monitor {2}",
-                            self.file.to_string_lossy(),
-                            self.index,
-                            name
-                        );
-                    }
-                    self.monitor = Some(name);
+                    self.monitor = Some(name.to_string());
                 }
                 Command::End => {
-                    if self.dry_run {
-                        log::trace!(
-                            "{0} line {1}: Reached the end",
-                            self.file.to_string_lossy(),
-                            self.index
-                        );
-                    }
                     self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
                     break;
                 }
             }
         }
+        if let Some(value) = replace {
+            self.init(value).run();
+        }
+    }
+
+    /// The main runner method, but prints what would be done instead of really doing so.
+    ///
+    /// # Errors
+    /// Errors that will halt the runner will be reported using [`DaemonRequest::Abort`].
+    /// Other errors are printed to stderr, and runner skips that command.
+    ///
+    /// # Panics
+    /// When the runner needs to report to the main thread using its channel, but the
+    /// channel is already closed, panic will occur.   
+    /// However, if the channel is already closed, it's impossible to make a graceful exit since
+    /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
+    #[allow(clippy::too_many_lines)]
+    pub fn dry_run(&mut self) {
+        if self.commands.is_empty() {
+            log::error!("This playlist is blank, exiting");
+            return;
+        }
+        // We cannot modify the Runner state inside the `match` block, so we save the information and do it
+        // later.
+        let mut replace: Option<PathBuf> = None;
+
+        loop {
+            let Some(current_cmd) = self.commands.get(&self.index) else {
+                log::error!("Unknown error when processing current command, skipping");
+                continue;
+            };
+            self.index += 1;
+            if self.index >= self.commands.len() {
+                self.index = 0;
+            }
+            match current_cmd {
+                Command::Wallpaper(id, duration, forever, properties) => {
+                    self.dry_summon_wallpaper(*id, *duration, *forever, properties);
+                }
+                Command::Wait(duration) => {
+                    log::trace!(
+                        "{0} line {1}: Sleep for {2}",
+                        self.file.to_string_lossy(),
+                        self.index,
+                        duration.human_format()
+                    );
+                }
+                Command::Goto(line, count) => {
+                    log::trace!(
+                        "{0} line {1}: Goto line {2}",
+                        self.file.to_string_lossy(),
+                        self.index,
+                        line
+                    );
+                    if *count == 0 {
+                        log::trace!("This goto is infinite, exiting");
+                        self.index = line - 1;
+                    } else if let Some(index) = self.search_cached_gotos(*line) {
+                        let existing = self.stored_gotos.get_mut(index).unwrap();
+                        if existing.remaining <= 1 {
+                            self.stored_gotos.remove(index);
+                            log::trace!("This goto is no longer effective");
+                        } else {
+                            existing.remaining -= 1;
+                            self.index = line - 1;
+                            log::trace!("Remaining times for this goto: {0}", existing.remaining);
+                        }
+                    } else {
+                        log::trace!("Remaining times for this goto: {count}");
+                        let cached = StoredGoto {
+                            location: *line,
+                            remaining: *count,
+                        };
+                        self.stored_gotos.push(cached);
+                        self.index = line - 1;
+                    }
+                }
+                Command::Summon(path) => {
+                    log::trace!(
+                        "{0} line {1}: Summon a new runner for playlist {2}",
+                        self.file.to_string_lossy(),
+                        self.index,
+                        path.to_string_lossy()
+                    );
+                    self.channel
+                        .send(DaemonRequest::NewRunner(path.clone()))
+                        .unwrap();
+                }
+                Command::Replace(path) => {
+                    log::trace!(
+                        "{0} line {1}: Replace the playlist with {2}",
+                        self.file.to_string_lossy(),
+                        self.index,
+                        path.to_string_lossy()
+                    );
+                    replace = Some(path.clone());
+                    break;
+                }
+                Command::Default(properties) => {
+                    log::trace!(
+                        "{0} line {1}: Set default properties: {2}",
+                        self.file.to_string_lossy(),
+                        self.index,
+                        wallpaper::pretty_print(properties)
+                    );
+                    self.default = properties.to_owned();
+                }
+                Command::Monitor(name) => {
+                    log::trace!(
+                        "{0} line {1}: Operate on monitor {2}",
+                        self.file.to_string_lossy(),
+                        self.index,
+                        name
+                    );
+                    self.monitor = Some(name.to_string());
+                }
+                Command::End => {
+                    log::trace!(
+                        "{0} line {1}: Reached the end",
+                        self.file.to_string_lossy(),
+                        self.index
+                    );
+                    self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
+                    break;
+                }
+            }
+        }
+        if let Some(value) = replace {
+            self.init(value).dry_run();
+        }
+    }
+    /// Prints what command would be executed to summon a wallpaper
+    fn dry_summon_wallpaper(
+        &self,
+        id: u32,
+        duration: Duration,
+        forever: bool,
+        properties: &HashMap<String, String>,
+    ) {
+        let cmd = wallpaper::get_cmd(
+            id,
+            self.cache_path,
+            self.binary,
+            self.assets_path,
+            self.monitor.as_deref(),
+            properties,
+            &self.default,
+        );
+        if forever {
+            log::trace!(
+                "{0} line {1}: Display wallpaper ID: {2} forever",
+                self.file.to_string_lossy(),
+                self.index,
+                id,
+            );
+            log::trace!("Run: {}", cmd.to_cmdline_lossy());
+            self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
+            return;
+        }
+        log::trace!(
+            "{0} line {1}: Display wallpaper ID: {2} for {3}",
+            self.file.to_string_lossy(),
+            self.index,
+            id,
+            duration.human_format()
+        );
+        log::trace!("Run: {}", cmd.to_cmdline_lossy());
+    }
+
+    /// Displays a wallpaper.
+    fn summon_wallpaper(
+        &self,
+        id: u32,
+        duration: Duration,
+        forever: bool,
+        properties: &HashMap<String, String>,
+    ) {
+        let cmd = wallpaper::get_cmd(
+            id,
+            self.cache_path,
+            self.binary,
+            self.assets_path,
+            self.monitor.as_deref(),
+            properties,
+            &self.default,
+        );
+        if forever {
+            let err = wallpaper::summon_forever(cmd);
+            log::warn!(
+                "{0} line {1}: {2}, skipping",
+                self.file.to_string_lossy(),
+                self.index,
+                err
+            );
+            return;
+        }
+        if let Err(err) = wallpaper::summon(cmd, duration) {
+            log::warn!(
+                "{0} line {1}: {2}, skipping",
+                self.file.to_string_lossy(),
+                self.index,
+                err
+            );
+        };
     }
 
     fn search_cached_gotos(&self, line: usize) -> Option<usize> {
@@ -310,32 +423,5 @@ impl<'a> Runner<'a> {
             }
         }
         None
-    }
-    fn cache_goto(&mut self, line: usize, count: u32) {
-        if let Some(index) = self.search_cached_gotos(line) {
-            let existing = self.stored_gotos.get_mut(index).unwrap();
-            if existing.remaining <= 1 {
-                self.stored_gotos.remove(index);
-                if self.dry_run {
-                    log::trace!("This goto is no longer effective");
-                }
-            } else {
-                existing.remaining -= 1;
-                self.index = line - 1;
-                if self.dry_run {
-                    log::trace!("Remaining times for this goto: {0}", existing.remaining);
-                }
-            }
-        } else {
-            if self.dry_run {
-                log::trace!("Remaining times for this goto: {count}");
-            }
-            let cached = StoredGoto {
-                location: line,
-                remaining: count,
-            };
-            self.stored_gotos.push(cached);
-            self.index = line - 1;
-        }
     }
 }

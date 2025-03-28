@@ -138,12 +138,15 @@ fn summon_runner(
     playlist: PathBuf,
     channel: Sender<DaemonRequest>,
 ) -> Result<thread::JoinHandle<()>, RuntimeError> {
-    let mut runner = Runner::new(0, playlist, &SearchPath, &CachePath, channel, Cfg.dry_run);
+    let mut runner = Runner::new(0, &SearchPath, &CachePath, channel);
     runner.assets_path(Cfg.assets_path.as_deref());
     runner.binary(Cfg.binary.as_deref());
     let Ok(thread) = thread::Builder::new()
         .name(format!("Runner {id}"))
-        .spawn(move || runner.run())
+        .spawn(move || {
+            runner.init(playlist);
+            runner.dispatch(Cfg.dry_run);
+        })
     else {
         log::warn!("Failed to summon new runner due to OS error");
         return Err(RuntimeError::InitFailed);

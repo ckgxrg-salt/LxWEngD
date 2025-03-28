@@ -61,8 +61,9 @@ pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> 
 /// Parses a playlist file and generates a list of [`Command`]
 /// This process will load the playlist file into memory, parse it, and generate a list of
 /// [`Command`].
-pub fn parse(path: &Path, file: &File) -> HashMap<usize, Command> {
-    let mut commands: HashMap<usize, Command> = HashMap::new();
+#[must_use]
+pub fn parse(path: &Path, file: &File) -> HashMap<Command, usize> {
+    let mut commands: HashMap<Command, usize> = HashMap::new();
     let lines: Vec<String> = BufReader::new(file)
         .lines()
         .enumerate()
@@ -70,7 +71,7 @@ pub fn parse(path: &Path, file: &File) -> HashMap<usize, Command> {
             line.unwrap_or_else(|err| {
                 log::warn!(
                     "\"{0}\" line {1}: {2}, ignoring",
-                    path.to_str().unwrap(),
+                    path.to_string_lossy(),
                     num,
                     err
                 );
@@ -87,12 +88,12 @@ pub fn parse(path: &Path, file: &File) -> HashMap<usize, Command> {
         };
         match identify(each) {
             Ok(cmd) => {
-                commands.insert(num, cmd);
+                commands.insert(cmd, num);
             }
             Err(err) => {
                 log::warn!(
                     "\"{0}\" line {1}: {2}, skipping",
-                    path.to_str().unwrap(),
+                    path.to_string_lossy(),
                     num,
                     err
                 );
@@ -105,7 +106,7 @@ pub fn parse(path: &Path, file: &File) -> HashMap<usize, Command> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Read;
+    use std::{io::Read, time::Duration};
 
     #[test]
     fn find_playlist() {
@@ -138,5 +139,32 @@ mod tests {
         .read_to_string(&mut content)
         .unwrap();
         assert_eq!(content, "=)\n");
+    }
+
+    #[test]
+    fn parse_playlist() {
+        let playlist = PathBuf::from("./playlists/default.playlist");
+        let commands = parse(
+            &playlist,
+            &find(&playlist, &PathBuf::from("Nothing")).unwrap(),
+        );
+
+        let mut expected = HashMap::new();
+        expected.insert(
+            0,
+            Command::Wallpaper(1, Duration::from_secs(15 * 60), false, HashMap::new()),
+        );
+        expected.insert(
+            1,
+            Command::Wallpaper(2, Duration::from_secs(1 * 60 * 60), false, HashMap::new()),
+        );
+        expected.insert(
+            2,
+            Command::Wallpaper(3, Duration::from_secs(360), false, HashMap::new()),
+        );
+        expected.insert(4, Command::Wait(Duration::from_secs(5 * 60)));
+        expected.insert(5, Command::End);
+
+        assert_eq!(commands, expected);
     }
 }

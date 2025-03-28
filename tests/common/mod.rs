@@ -2,11 +2,9 @@
 
 use env_logger;
 use lazy_static::lazy_static;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc, RwLock};
-
-use lxwengd::Runner;
+use std::sync::{Arc, RwLock};
 
 lazy_static! {
     pub static ref Captured: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
