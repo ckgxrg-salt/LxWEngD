@@ -9,6 +9,7 @@ use duration_str::HumanFormat;
 
 use crate::commands::Command;
 use crate::playlist;
+use crate::resume;
 use crate::wallpaper;
 use crate::DaemonRequest;
 
@@ -155,6 +156,14 @@ impl<'a> Runner<'a> {
         let mut replace: Option<PathBuf> = None;
         let (&last_line_num, _) = self.commands.last_key_value().unwrap();
 
+        match resume::load_state(&self.file, last_line_num) {
+            Ok(value) => self.index = value,
+            Err(resume::ResumeError::ExceedMaxLine) => {
+                log::warn!("Loaded saved state, but the stored line number is invalid");
+            }
+            Err(_) => (),
+        }
+
         loop {
             if self.index > last_line_num {
                 self.index = 0;
@@ -162,6 +171,9 @@ impl<'a> Runner<'a> {
             let Some(current_cmd) = self.commands.get(&self.index) else {
                 self.index += 1;
                 continue;
+            };
+            if resume::save_state(self.index, &self.file).is_err() {
+                log::warn!("Failed to save current state due to unknown error");
             };
             self.index += 1;
             match current_cmd {
@@ -198,6 +210,9 @@ impl<'a> Runner<'a> {
                 }
                 Command::Replace(path) => {
                     replace = Some(path.clone());
+                    if resume::clear_state(&self.file).is_err() {
+                        log::warn!("Failed to clear current state due to unknown error");
+                    };
                     break;
                 }
                 Command::Default(properties) => {
@@ -207,6 +222,9 @@ impl<'a> Runner<'a> {
                     self.monitor = Some(name.to_string());
                 }
                 Command::End => {
+                    if resume::clear_state(&self.file).is_err() {
+                        log::warn!("Failed to clear current state due to unknown error");
+                    };
                     self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
                     break;
                 }

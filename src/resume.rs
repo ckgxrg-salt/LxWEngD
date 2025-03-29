@@ -37,6 +37,18 @@ pub fn save_state(line: usize, path: &Path) -> Result<(), ResumeError> {
     Ok(())
 }
 
+/// Clears the resume state, useful when a playlist is ending.
+///
+/// # Parameters
+/// - path: Path of the playlist file.
+pub fn clear_state(path: &Path) -> Result<(), ResumeError> {
+    let mut temp = path.to_path_buf().into_os_string();
+    temp.push(".resume");
+
+    fs::remove_file(temp).map_err(|_| ResumeError::StoreError)?;
+    Ok(())
+}
+
 /// Loads the line number from a File.
 ///
 /// # Parameters
