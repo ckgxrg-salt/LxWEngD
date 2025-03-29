@@ -12,6 +12,7 @@ use crate::playlist;
 use crate::wallpaper;
 use crate::DaemonRequest;
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
@@ -24,7 +25,7 @@ pub struct Runner<'a> {
     // Basic info
     id: u8,
     file: PathBuf,
-    commands: HashMap<usize, Command>,
+    commands: BTreeMap<usize, Command>,
     index: usize,
     channel: mpsc::Sender<DaemonRequest>,
 
@@ -88,7 +89,7 @@ impl<'a> Runner<'a> {
             cache_path,
             binary: None,
             assets_path: None,
-            commands: HashMap::new(),
+            commands: BTreeMap::new(),
             stored_gotos: Vec::new(),
             monitor: None,
             default: HashMap::new(),
@@ -152,16 +153,17 @@ impl<'a> Runner<'a> {
         // We cannot modify the Runner state inside the `match` block, so we save the information and do it
         // later.
         let mut replace: Option<PathBuf> = None;
+        let (&last_line_num, _) = self.commands.last_key_value().unwrap();
 
         loop {
+            if self.index > last_line_num {
+                self.index = 0;
+            }
             let Some(current_cmd) = self.commands.get(&self.index) else {
-                log::error!("Unknown error when processing current command, skipping");
+                self.index += 1;
                 continue;
             };
             self.index += 1;
-            if self.index >= self.commands.len() {
-                self.index = 0;
-            }
             match current_cmd {
                 Command::Wallpaper(id, duration, forever, properties) => {
                     self.summon_wallpaper(*id, *duration, *forever, properties);
@@ -230,21 +232,27 @@ impl<'a> Runner<'a> {
     pub fn dry_run(&mut self) {
         if self.commands.is_empty() {
             log::error!("This playlist is blank, exiting");
+            self.channel
+                .send(DaemonRequest::Abort(self.id, RuntimeError::InitFailed))
+                .unwrap();
             return;
         }
         // We cannot modify the Runner state inside the `match` block, so we save the information and do it
         // later.
         let mut replace: Option<PathBuf> = None;
+        let (&last_line_num, _) = self.commands.last_key_value().unwrap();
 
         loop {
+            if self.index > last_line_num {
+                log::trace!("This playlist is infinite, exiting");
+                self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
+                return;
+            }
             let Some(current_cmd) = self.commands.get(&self.index) else {
-                log::error!("Unknown error when processing current command, skipping");
+                self.index += 1;
                 continue;
             };
             self.index += 1;
-            if self.index >= self.commands.len() {
-                self.index = 0;
-            }
             match current_cmd {
                 Command::Wallpaper(id, duration, forever, properties) => {
                     self.dry_summon_wallpaper(*id, *duration, *forever, properties);

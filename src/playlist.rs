@@ -1,7 +1,7 @@
 //! Finds playlist files in some given search path.
 #![warn(clippy::pedantic)]
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
@@ -62,8 +62,8 @@ pub fn find(filename: &Path, search_path: &Path) -> Result<File, PlaylistError> 
 /// This process will load the playlist file into memory, parse it, and generate a list of
 /// [`Command`].
 #[must_use]
-pub fn parse(path: &Path, file: &File) -> HashMap<Command, usize> {
-    let mut commands: HashMap<Command, usize> = HashMap::new();
+pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
+    let mut commands = BTreeMap::new();
     let lines: Vec<String> = BufReader::new(file)
         .lines()
         .enumerate()
@@ -88,7 +88,7 @@ pub fn parse(path: &Path, file: &File) -> HashMap<Command, usize> {
         };
         match identify(each) {
             Ok(cmd) => {
-                commands.insert(cmd, num);
+                commands.insert(num, cmd);
             }
             Err(err) => {
                 log::warn!(
@@ -106,7 +106,9 @@ pub fn parse(path: &Path, file: &File) -> HashMap<Command, usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{io::Read, time::Duration};
+    use std::collections::HashMap;
+    use std::io::Read;
+    use std::time::Duration;
 
     #[test]
     fn find_playlist() {
@@ -149,7 +151,7 @@ mod tests {
             &find(&playlist, &PathBuf::from("Nothing")).unwrap(),
         );
 
-        let mut expected = HashMap::new();
+        let mut expected = BTreeMap::new();
         expected.insert(
             0,
             Command::Wallpaper(1, Duration::from_secs(15 * 60), false, HashMap::new()),
