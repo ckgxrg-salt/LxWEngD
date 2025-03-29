@@ -70,9 +70,9 @@ pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
         .map(|(num, line)| {
             line.unwrap_or_else(|err| {
                 log::warn!(
-                    "\"{0}\" line {1}: {2}, ignoring",
+                    "{0} line {1}: {2}, ignoring",
                     path.to_string_lossy(),
-                    num,
+                    num + 1,
                     err
                 );
                 String::new()
@@ -92,9 +92,9 @@ pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
             }
             Err(err) => {
                 log::warn!(
-                    "\"{0}\" line {1}: {2}, skipping",
+                    "{0} line {1}: {2}, skipping",
                     path.to_string_lossy(),
-                    num,
+                    num + 1,
                     err
                 );
             }

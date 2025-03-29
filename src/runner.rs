@@ -147,7 +147,7 @@ impl<'a> Runner<'a> {
     /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
     pub fn run(&mut self) {
         if self.commands.is_empty() {
-            log::error!("This playlist is blank, exiting");
+            log::error!("No commands to execute, exiting");
             return;
         }
         // We cannot modify the Runner state inside the `match` block, so we save the information and do it
@@ -231,7 +231,7 @@ impl<'a> Runner<'a> {
     #[allow(clippy::too_many_lines)]
     pub fn dry_run(&mut self) {
         if self.commands.is_empty() {
-            log::error!("This playlist is blank, exiting");
+            log::error!("No commands to execute, exiting");
             self.channel
                 .send(DaemonRequest::Abort(self.id, RuntimeError::InitFailed))
                 .unwrap();
@@ -349,6 +349,7 @@ impl<'a> Runner<'a> {
             self.init(value).dry_run();
         }
     }
+
     /// Prints what command would be executed to summon a wallpaper
     fn dry_summon_wallpaper(
         &self,

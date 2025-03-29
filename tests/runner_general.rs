@@ -8,10 +8,12 @@ use lxwengd::{DaemonRequest, Runner};
 mod common;
 
 #[test]
-fn default_playlist() {
+fn test() {
     common::setup();
     let (tx, rx) = mpsc::channel();
-    let mut runner = Runner::new(0, &common::SearchPath, &common::CachePath, tx);
+
+    // An ordinary playlist
+    let mut runner = Runner::new(0, &common::SearchPath, &common::CachePath, tx.clone());
     runner.init(PathBuf::from("default.playlist"));
     runner.dry_run();
 
