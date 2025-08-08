@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-use crate::commands::{identify, Command};
+use crate::commands::{Command, identify};
 
 #[derive(Debug, PartialEq)]
 pub enum PlaylistError {

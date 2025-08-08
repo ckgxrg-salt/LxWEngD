@@ -1,4 +1,5 @@
-//! lxwengctl entry
+//! `lxwengctl` entry
+//!
 //! The cli program to communicate with lxwengd
 
 mod cli;

@@ -17,7 +17,12 @@
       devShells.${system}.default = pkgs.mkShell {
         name = "lxwengd";
 
-        buildInputs = with pkgs; [
+        buildInputs = with pkgs.xorg; [
+          libxcb
+          libXrandr
+        ];
+
+        nativeBuildInputs = with pkgs; [
           cargo
           rustc
           clippy

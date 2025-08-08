@@ -3,14 +3,11 @@
 //! The runner may fail to initialise due to some errors, if this happens, the runner will report
 //! to the main thread using [`DaemonRequest::Abort`].
 //! Other errors are printed to stderr and the runner will continue to operate.
-#![warn(clippy::pedantic)]
 
-use duration_str::HumanFormat;
-
+use crate::DaemonRequest;
 use crate::commands::Command;
 use crate::playlist;
 use crate::wallpaper;
-use crate::DaemonRequest;
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -34,14 +31,8 @@ pub struct Runner<'a> {
     cache_path: &'a Path,
     binary: Option<&'a str>,
     assets_path: Option<&'a Path>,
-    stored_gotos: Vec<StoredGoto>,
     monitor: Option<String>,
     default: HashMap<String, String>,
-}
-
-struct StoredGoto {
-    location: usize,
-    remaining: u32,
 }
 
 #[derive(Debug, PartialEq)]
@@ -90,7 +81,6 @@ impl<'a> Runner<'a> {
             binary: None,
             assets_path: None,
             commands: BTreeMap::new(),
-            stored_gotos: Vec::new(),
             monitor: None,
             default: HashMap::new(),
         }
@@ -111,7 +101,7 @@ impl<'a> Runner<'a> {
     ///
     /// # Panics
     /// When the runner needs to report to the main thread using its channel, but the
-    /// channel is already closed, panic will occur.   
+    /// channel is already closed, panic will occur.
     /// However, if the channel is already closed, it's impossible to make a graceful exit since
     /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
     pub fn init(&mut self, path: PathBuf) -> &mut Self {
@@ -126,12 +116,8 @@ impl<'a> Runner<'a> {
 
     /// Starts the job of the runner.
     /// This is just a wrapper that determines whether a Runner normally runs or dry-runs.
-    pub fn dispatch(&mut self, dry_run: bool) {
-        if dry_run {
-            self.dry_run();
-        } else {
-            self.run();
-        }
+    pub fn dispatch(&mut self) {
+        self.run();
     }
 
     /// The main runner method.
@@ -142,7 +128,7 @@ impl<'a> Runner<'a> {
     ///
     /// # Panics
     /// When the runner needs to report to the main thread using its channel, but the
-    /// channel is already closed, panic will occur.   
+    /// channel is already closed, panic will occur.
     /// However, if the channel is already closed, it's impossible to make a graceful exit since
     /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
     pub fn run(&mut self) {
@@ -152,7 +138,6 @@ impl<'a> Runner<'a> {
         }
         // We cannot modify the Runner state inside the `match` block, so we save the information and do it
         // later.
-        let mut replace: Option<PathBuf> = None;
         let (&last_line_num, _) = self.commands.last_key_value().unwrap();
 
         loop {
@@ -171,40 +156,8 @@ impl<'a> Runner<'a> {
                 Command::Wait(duration) => {
                     thread::sleep(*duration);
                 }
-                Command::Goto(line, count) => {
-                    if *count == 0 {
-                        self.index = line - 1;
-                    } else if let Some(index) = self.search_cached_gotos(*line) {
-                        let existing = self.stored_gotos.get_mut(index).unwrap();
-                        if existing.remaining <= 1 {
-                            self.stored_gotos.remove(index);
-                        } else {
-                            existing.remaining -= 1;
-                            self.index = line - 1;
-                        }
-                    } else {
-                        let cached = StoredGoto {
-                            location: *line,
-                            remaining: *count,
-                        };
-                        self.stored_gotos.push(cached);
-                        self.index = line - 1;
-                    }
-                }
-                Command::Summon(path) => {
-                    self.channel
-                        .send(DaemonRequest::NewRunner(path.clone()))
-                        .unwrap();
-                }
-                Command::Replace(path) => {
-                    replace = Some(path.clone());
-                    break;
-                }
                 Command::Default(properties) => {
                     self.default = properties.to_owned();
-                }
-                Command::Monitor(name) => {
-                    self.monitor = Some(name.to_string());
                 }
                 Command::End => {
                     self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
@@ -212,180 +165,6 @@ impl<'a> Runner<'a> {
                 }
             }
         }
-        if let Some(value) = replace {
-            self.init(value).run();
-        }
-    }
-
-    /// The main runner method, but prints what would be done instead of really doing so.
-    ///
-    /// # Errors
-    /// Errors that will halt the runner will be reported using [`DaemonRequest::Abort`].
-    /// Other errors are printed to stderr, and runner skips that command.
-    ///
-    /// # Panics
-    /// When the runner needs to report to the main thread using its channel, but the
-    /// channel is already closed, panic will occur.   
-    /// However, if the channel is already closed, it's impossible to make a graceful exit since
-    /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
-    #[allow(clippy::too_many_lines)]
-    pub fn dry_run(&mut self) {
-        if self.commands.is_empty() {
-            log::error!("No commands to execute, exiting");
-            self.channel
-                .send(DaemonRequest::Abort(self.id, RuntimeError::InitFailed))
-                .unwrap();
-            return;
-        }
-        // We cannot modify the Runner state inside the `match` block, so we save the information and do it
-        // later.
-        let mut replace: Option<PathBuf> = None;
-        let (&last_line_num, _) = self.commands.last_key_value().unwrap();
-
-        loop {
-            if self.index > last_line_num {
-                log::trace!("This playlist is infinite, exiting");
-                self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
-                return;
-            }
-            let Some(current_cmd) = self.commands.get(&self.index) else {
-                self.index += 1;
-                continue;
-            };
-            self.index += 1;
-            match current_cmd {
-                Command::Wallpaper(id, duration, forever, properties) => {
-                    self.dry_summon_wallpaper(*id, *duration, *forever, properties);
-                }
-                Command::Wait(duration) => {
-                    log::trace!(
-                        "{0} line {1}: Sleep for {2}",
-                        self.file.to_string_lossy(),
-                        self.index,
-                        duration.human_format()
-                    );
-                }
-                Command::Goto(line, count) => {
-                    log::trace!(
-                        "{0} line {1}: Goto line {2}",
-                        self.file.to_string_lossy(),
-                        self.index,
-                        line
-                    );
-                    if *count == 0 {
-                        log::trace!("This goto is infinite, exiting");
-                        self.index = line - 1;
-                    } else if let Some(index) = self.search_cached_gotos(*line) {
-                        let existing = self.stored_gotos.get_mut(index).unwrap();
-                        if existing.remaining <= 1 {
-                            self.stored_gotos.remove(index);
-                            log::trace!("This goto is no longer effective");
-                        } else {
-                            existing.remaining -= 1;
-                            self.index = line - 1;
-                            log::trace!("Remaining times for this goto: {0}", existing.remaining);
-                        }
-                    } else {
-                        log::trace!("Remaining times for this goto: {count}");
-                        let cached = StoredGoto {
-                            location: *line,
-                            remaining: *count,
-                        };
-                        self.stored_gotos.push(cached);
-                        self.index = line - 1;
-                    }
-                }
-                Command::Summon(path) => {
-                    log::trace!(
-                        "{0} line {1}: Summon a new runner for playlist {2}",
-                        self.file.to_string_lossy(),
-                        self.index,
-                        path.to_string_lossy()
-                    );
-                    self.channel
-                        .send(DaemonRequest::NewRunner(path.clone()))
-                        .unwrap();
-                }
-                Command::Replace(path) => {
-                    log::trace!(
-                        "{0} line {1}: Replace the playlist with {2}",
-                        self.file.to_string_lossy(),
-                        self.index,
-                        path.to_string_lossy()
-                    );
-                    replace = Some(path.clone());
-                    break;
-                }
-                Command::Default(properties) => {
-                    log::trace!(
-                        "{0} line {1}: Set default properties: {2}",
-                        self.file.to_string_lossy(),
-                        self.index,
-                        wallpaper::pretty_print(properties)
-                    );
-                    self.default = properties.to_owned();
-                }
-                Command::Monitor(name) => {
-                    log::trace!(
-                        "{0} line {1}: Operate on monitor {2}",
-                        self.file.to_string_lossy(),
-                        self.index,
-                        name
-                    );
-                    self.monitor = Some(name.to_string());
-                }
-                Command::End => {
-                    log::trace!(
-                        "{0} line {1}: Reached the end",
-                        self.file.to_string_lossy(),
-                        self.index
-                    );
-                    self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
-                    break;
-                }
-            }
-        }
-        if let Some(value) = replace {
-            self.init(value).dry_run();
-        }
-    }
-
-    /// Prints what command would be executed to summon a wallpaper
-    fn dry_summon_wallpaper(
-        &self,
-        id: u32,
-        duration: Duration,
-        forever: bool,
-        properties: &HashMap<String, String>,
-    ) {
-        let cmd = wallpaper::get_cmd(
-            id,
-            self.cache_path,
-            self.binary,
-            self.assets_path,
-            self.monitor.as_deref(),
-            properties,
-            &self.default,
-        );
-        if forever {
-            log::trace!(
-                "{0} line {1}: Display wallpaper ID: {2} forever",
-                self.file.to_string_lossy(),
-                self.index,
-                id,
-            );
-            log::trace!("Run: {}", cmd.to_cmdline_lossy());
-            self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
-            return;
-        }
-        log::trace!(
-            "{0} line {1}: Display wallpaper ID: {2} for {3}",
-            self.file.to_string_lossy(),
-            self.index,
-            id,
-            duration.human_format()
-        );
-        log::trace!("Run: {}", cmd.to_cmdline_lossy());
     }
 
     /// Displays a wallpaper.
@@ -422,15 +201,6 @@ impl<'a> Runner<'a> {
                 self.index,
                 err
             );
-        };
-    }
-
-    fn search_cached_gotos(&self, line: usize) -> Option<usize> {
-        for (index, any) in self.stored_gotos.iter().enumerate() {
-            if any.location == line {
-                return Some(index);
-            }
         }
-        None
     }
 }

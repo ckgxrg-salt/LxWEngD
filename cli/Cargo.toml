@@ -8,3 +8,4 @@ pedantic = "warn"
 
 [dependencies]
 clap = { version = "4.5.43", features = ["derive"] }
+display-info = "0.5.4"

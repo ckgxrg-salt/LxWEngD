@@ -1,12 +1,10 @@
 //! Defines commands the daemon can identify.
 //!
 //! Also provides a function to parse strings to commands.
-#![warn(clippy::pedantic)]
 
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
-use std::path::PathBuf;
 use std::str::SplitWhitespace;
 use std::time::Duration;
 
@@ -20,14 +18,6 @@ pub enum Command {
     Wait(Duration),
     /// Ends the playlist.
     End,
-    /// Jump to a line in the playlist.
-    Goto(usize, u32),
-    /// Make the current runner execute another playlist.
-    Replace(PathBuf),
-    /// Requests the main thread to summon a new runner executing another playlist.
-    Summon(PathBuf),
-    /// Changes the monitor the current runner operating on.
-    Monitor(String),
     /// Sets default properties for all wallpapers.
     Default(HashMap<String, String>),
 }
@@ -71,20 +61,6 @@ impl Display for ParseError {
 pub fn identify(str: &str) -> Result<Command, ParseError> {
     let mut segment = str.split_whitespace();
     match segment.next() {
-        Some("goto") => {
-            let loc = segment
-                .next()
-                .ok_or(ParseError::NotEnoughArguments)?
-                .parse::<usize>()
-                .map_err(|_| ParseError::InvalidArgument)?;
-            let count = segment
-                .next()
-                .unwrap_or("0")
-                .parse::<u32>()
-                .map_err(|_| ParseError::InvalidArgument)?;
-            Ok(Command::Goto(loc, count))
-        }
-        Some("loop") => Ok(Command::Goto(1, 0)),
         Some("end") => Ok(Command::End),
         Some("wait") => {
             let duration_str = segment.next().ok_or(ParseError::NotEnoughArguments)?;
@@ -92,38 +68,10 @@ pub fn identify(str: &str) -> Result<Command, ParseError> {
                 duration_str::parse(duration_str).map_err(|_| ParseError::InvalidArgument)?;
             Ok(Command::Wait(duration))
         }
-
-        Some("replace") => {
-            let path = segment
-                .next()
-                .ok_or(ParseError::NotEnoughArguments)?
-                .parse::<PathBuf>()
-                .map_err(|_| ParseError::InvalidArgument)?;
-            Ok(Command::Replace(path))
-        }
-        Some("summon") => {
-            let path = segment
-                .next()
-                .ok_or(ParseError::NotEnoughArguments)?
-                .parse::<PathBuf>()
-                .map_err(|_| ParseError::InvalidArgument)?;
-            Ok(Command::Summon(path))
-        }
-
         Some("default") => {
             let properties = extract_properties(&mut segment)?;
             Ok(Command::Default(properties))
         }
-
-        Some("monitor") => {
-            let name = segment
-                .next()
-                .ok_or(ParseError::NotEnoughArguments)?
-                .parse::<String>()
-                .map_err(|_| ParseError::InvalidArgument)?;
-            Ok(Command::Monitor(name))
-        }
-
         // Might be a wallpaper
         Some(value) => {
             let id = value
@@ -169,21 +117,13 @@ mod tests {
     fn identify_commands() {
         let cmd = "wait 165";
         assert_eq!(identify(cmd), Ok(Command::Wait(Duration::new(165, 0))));
-        let cmd = "goto 165";
-        assert_eq!(identify(cmd), Ok(Command::Goto(165, 0)));
-        let cmd = "loop";
-        assert_eq!(identify(cmd), Ok(Command::Goto(1, 0)));
         let cmd = "end";
         assert_eq!(identify(cmd), Ok(Command::End));
-        let cmd = "replace some";
-        assert_eq!(identify(cmd), Ok(Command::Replace(PathBuf::from("some"))));
-        let cmd = "summon other";
-        assert_eq!(identify(cmd), Ok(Command::Summon(PathBuf::from("other"))));
         let cmd = "114514 5h";
         assert_eq!(
             identify(cmd),
             Ok(Command::Wallpaper(
-                114514,
+                114_514,
                 Duration::new(5 * 60 * 60, 0),
                 false,
                 HashMap::new()
@@ -212,7 +152,7 @@ mod tests {
         assert_eq!(
             identify(cmd),
             Ok(Command::Wallpaper(
-                114514,
+                114_514,
                 Duration::from_secs(15 * 60),
                 false,
                 expected
@@ -222,7 +162,7 @@ mod tests {
         assert_eq!(
             identify(cmd),
             Ok(Command::Wallpaper(
-                114514,
+                114_514,
                 Duration::ZERO,
                 true,
                 HashMap::new()
@@ -233,7 +173,7 @@ mod tests {
         expected.insert(String::from("ooh"), String::from("hoo"));
         assert_eq!(
             identify(cmd),
-            Ok(Command::Wallpaper(114514, Duration::ZERO, true, expected))
+            Ok(Command::Wallpaper(114_514, Duration::ZERO, true, expected))
         );
         let cmd = "114514 5min some=ok hello kids I'm here to destroy the Earth";
         assert_eq!(identify(cmd), Err(ParseError::InvalidArgument));

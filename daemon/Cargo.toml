@@ -10,7 +10,6 @@ pedantic = "warn"
 clap = { version = "4.5.28", features = ["derive"] }
 duration-str = "0.13.0"
 fern = "0.7.1"
-lazy_static = "1.5.0"
 log = "0.4.26"
 subprocess = "0.2.9"
 

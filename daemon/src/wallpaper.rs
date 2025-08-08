@@ -1,7 +1,6 @@
 //! # Wallpapers
 //!
 //! Provides utils for generating command and summoning linux-wallpaperengine.
-#![warn(clippy::pedantic)]
 
 use crate::runner::RuntimeError;
 
@@ -128,7 +127,7 @@ mod tests {
     #[test]
     fn getting_cmd() {
         let cmd = get_cmd(
-            114514,
+            114_514,
             &PathBuf::from("/tmp/lxwengd-dev"),
             None,
             Some(&PathBuf::from("ng")),
@@ -171,12 +170,16 @@ mod tests {
         properties.insert(String::from("mujica"), String::from("ooo"));
         properties.insert(String::from("whoknows"), String::from("idk"));
         engine = handle_properties(&properties, engine);
-        assert!(engine
-            .to_cmdline_lossy()
-            .contains("--set-property 'mujica=ooo'"));
-        assert!(engine
-            .to_cmdline_lossy()
-            .contains("--set-property 'whoknows=idk'"));
+        assert!(
+            engine
+                .to_cmdline_lossy()
+                .contains("--set-property 'mujica=ooo'")
+        );
+        assert!(
+            engine
+                .to_cmdline_lossy()
+                .contains("--set-property 'whoknows=idk'")
+        );
     }
 
     #[test]
