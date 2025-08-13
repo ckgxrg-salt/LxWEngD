@@ -13,7 +13,7 @@ use std::sync::{LazyLock, mpsc};
 use std::thread;
 use std::{collections::HashMap, sync::mpsc::Sender};
 
-use lxwengd::{DaemonRequest, Runner, RuntimeError};
+use lxwengd::{Runner, RuntimeError};
 
 #[derive(Parser)]
 #[command(
@@ -29,21 +29,27 @@ struct Cli {
     )]
     playlist: Option<PathBuf>,
 
-    #[arg{
+    #[arg(
         short = 'b',
         long = "binary",
         value_name = "PATH",
         help = "Path to the linux-wallpaperengine binary."
-    }]
+    )]
     binary: Option<String>,
 
-    #[arg{
+    #[arg(
         short = 'a',
         long = "assets-path",
         value_name = "PATH",
         help = "Path to Wallpaper Engine assets."
-    }]
+    )]
     assets_path: Option<PathBuf>,
+
+    #[arg(
+        long = "standby",
+        help = "Do not load the default playlist on startup."
+    )]
+    standby: bool,
 }
 
 struct Config {
@@ -117,12 +123,8 @@ fn setup_logger() -> Result<(), fern::InitError> {
 }
 
 /// Creates a new runner operating the given playlist
-fn summon_runner(
-    id: u8,
-    playlist: PathBuf,
-    channel: Sender<DaemonRequest>,
-) -> Result<thread::JoinHandle<()>, RuntimeError> {
-    let mut runner = Runner::new(0, &SEARCH_PATH, &CACHE_PATH, channel);
+fn summon_runner(id: u8, playlist: PathBuf) -> Result<thread::JoinHandle<()>, RuntimeError> {
+    let mut runner = Runner::new(0, &SEARCH_PATH, &CACHE_PATH);
     runner.assets_path(CFG.assets_path.as_deref());
     runner.binary(CFG.binary.as_deref());
     let Ok(thread) = thread::Builder::new()
@@ -151,27 +153,12 @@ fn main() -> Result<(), RuntimeError> {
     setup_logger().map_err(|_| RuntimeError::InitFailed)?;
 
     // Begin creating first runner
-    let (tx, rx) = mpsc::channel::<DaemonRequest>();
     let mut runners: HashMap<u8, thread::JoinHandle<()>> = HashMap::new();
 
-    runners.insert(0, summon_runner(0, CFG.playlist.clone(), tx.clone())?);
+    runners.insert(0, summon_runner(0, CFG.playlist.clone())?);
 
     // Listen to commands
-    while !runners.is_empty() {
-        let Ok(message) = rx.recv() else {
-            eprintln!("Channel to runners has closed, aborting");
-            break;
-        };
-        match message {
-            DaemonRequest::Exit(id) => {
-                runners.remove(&id);
-            }
-            DaemonRequest::Abort(id, error) => {
-                eprintln!("Runner {id} aborted with error: {error}");
-                runners.remove(&id);
-            }
-        }
-    }
+    while !runners.is_empty() {}
     Ok(())
 }
 

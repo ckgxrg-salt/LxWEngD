@@ -4,7 +4,6 @@
 //! to the main thread using [`DaemonRequest::Abort`].
 //! Other errors are printed to stderr and the runner will continue to operate.
 
-use crate::DaemonRequest;
 use crate::commands::Command;
 use crate::playlist;
 use crate::wallpaper;
@@ -24,7 +23,6 @@ pub struct Runner<'a> {
     file: PathBuf,
     commands: BTreeMap<usize, Command>,
     index: usize,
-    channel: mpsc::Sender<DaemonRequest>,
 
     // Runtime info
     search_path: &'a Path,
@@ -65,15 +63,9 @@ impl Display for RuntimeError {
 impl<'a> Runner<'a> {
     /// Creates a new Runner that operates the given playlist.
     #[must_use]
-    pub fn new(
-        id: u8,
-        search_path: &'a Path,
-        cache_path: &'a Path,
-        channel: mpsc::Sender<DaemonRequest>,
-    ) -> Self {
+    pub fn new(id: u8, search_path: &'a Path, cache_path: &'a Path) -> Self {
         Self {
             id,
-            channel,
             file: PathBuf::new(),
             index: 0,
             search_path,
@@ -160,7 +152,6 @@ impl<'a> Runner<'a> {
                     self.default = properties.to_owned();
                 }
                 Command::End => {
-                    self.channel.send(DaemonRequest::Exit(self.id)).unwrap();
                     break;
                 }
             }
