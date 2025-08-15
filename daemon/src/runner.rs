@@ -6,39 +6,43 @@ use crate::commands::Command;
 use crate::playlist;
 use crate::wallpaper;
 
-use std::collections::HashMap;
+use smol::Task;
+use smol::process::Command as _Command;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
-use std::thread;
 use std::time::Duration;
 use thiserror::Error;
 
 pub struct Runner {
-    // Basic info
-    id: u8,
+    name: String,
     index: usize,
     path: PathBuf,
-    commands: Vec<Command>,
+    commands: BTreeMap<usize, Command>,
     default: HashMap<String, String>,
+    current_task: Option<Task<()>>,
 }
 
 #[derive(Debug, PartialEq, Error)]
 pub enum RunnerError {
     #[error("runner init failed")]
     InitFailed,
-    #[error("linux-wallpaperengine unexpectedly exited")]
+    #[error("cannot spawn `linux-wallpaperengine`")]
+    CannotSpawn,
+    #[error("`linux-wallpaperengine` unexpectedly exited")]
     EngineDied,
 }
 
 impl Runner {
     /// Creates a new Runner that operates the given playlist.
-    pub fn new(id: u8, path: PathBuf) -> Result<Self, RunnerError> {
+    pub fn new(name: String, path: PathBuf) -> Result<Self, RunnerError> {
         match playlist::open(&path) {
             Ok(file) => Ok(Self {
                 commands: playlist::parse(&path, &file),
-                id,
+                name,
                 index: 0,
                 path,
                 default: HashMap::new(),
+                current_task: None,
             }),
             Err(err) => {
                 log::error!("{err}");
@@ -48,27 +52,18 @@ impl Runner {
     }
 
     /// The main runner task.
-    ///
-    /// # Errors
-    /// Errors that will halt the runner will be reported using [`DaemonRequest::Abort`].
-    /// Other errors are printed to stderr, and runner skips that command.
-    ///
-    /// # Panics
-    /// When the runner needs to report to the main thread using its channel, but the
-    /// channel is already closed, panic will occur.
-    /// However, if the channel is already closed, it's impossible to make a graceful exit since
-    /// there's no way to send a [`DaemonRequest::Abort`] or [`DaemonRequest::Exit`].   
-    pub fn run(&mut self) {
+    pub async fn run(&mut self) {
         if self.commands.is_empty() {
-            log::error!("No commands to execute, exiting");
+            log::error!("no commands to execute, exiting");
             return;
         }
-        // We cannot modify the Runner state inside the `match` block, so we save the information and do it
-        // later.
-        let (&last_line_num, _) = self.commands.last_key_value().unwrap();
+        let Some((&length, _)) = self.commands.last_key_value() else {
+            log::error!("invalid playlist file");
+            return;
+        };
 
         loop {
-            if self.index > last_line_num {
+            if self.index > length {
                 self.index = 0;
             }
             let Some(current_cmd) = self.commands.get(&self.index) else {
@@ -81,7 +76,7 @@ impl Runner {
                     self.summon_wallpaper(*id, *duration, *forever, properties);
                 }
                 Command::Wait(duration) => {
-                    thread::sleep(*duration);
+                    smol::Timer::after(*duration).await;
                 }
                 Command::Default(properties) => {
                     self.default = properties.to_owned();
@@ -101,9 +96,9 @@ impl Runner {
         forever: bool,
         properties: &HashMap<String, String>,
     ) {
-        let cmd = wallpaper::get_cmd(id, self.cache_path, properties, &self.default);
+        let cmd = wallpaper::get_cmd(id, &self.name, properties, &self.default);
         if forever {
-            let err = wallpaper::summon_forever(cmd);
+            let err = summon_forever(cmd);
             log::warn!(
                 "{0} line {1}: {2}, skipping",
                 self.path.to_string_lossy(),
@@ -112,7 +107,7 @@ impl Runner {
             );
             return;
         }
-        if let Err(err) = wallpaper::summon(cmd, duration) {
+        if let Err(err) = summon_duration(cmd, duration) {
             log::warn!(
                 "{0} line {1}: {2}, skipping",
                 self.path.to_string_lossy(),
@@ -120,5 +115,16 @@ impl Runner {
                 err
             );
         }
+    }
+
+    async fn display_forever(&mut self, mut cmd: _Command) -> Result<(), RunnerError> {
+        let mut child = cmd.spawn().map_err(|_| RunnerError::CannotSpawn)?;
+        let subprocess = smol::spawn(async move {
+            child.status().await;
+        });
+
+        subprocess.await;
+
+        Err(RunnerError::EngineDied)
     }
 }

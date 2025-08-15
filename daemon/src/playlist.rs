@@ -1,6 +1,7 @@
 //! Finds playlist files in some given search path.
 #![warn(clippy::pedantic)]
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -51,8 +52,9 @@ pub fn open(filename: &Path) -> Result<File, FileNotFound> {
 /// Parses a playlist file and generates a list of [`Command`]
 /// This process will load the playlist file into memory, parse it, and generate a list of
 /// [`Command`].
-pub fn parse(path: &Path, file: &File) -> Vec<Command> {
-    let mut commands = Vec::new();
+#[must_use]
+pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
+    let mut commands = BTreeMap::new();
     let lines: Vec<String> = BufReader::new(file)
         .lines()
         .enumerate()
@@ -77,7 +79,7 @@ pub fn parse(path: &Path, file: &File) -> Vec<Command> {
         };
         match identify(each) {
             Ok(cmd) => {
-                commands.push(cmd);
+                commands.insert(num, cmd);
             }
             Err(err) => {
                 log::warn!(
@@ -137,7 +139,10 @@ mod tests {
             Command::Wallpaper(3, Duration::from_secs(360), false, HashMap::new()),
             Command::Wait(Duration::from_secs(5 * 60)),
             Command::End,
-        ];
+        ]
+        .into_iter()
+        .enumerate()
+        .collect();
         assert_eq!(commands, expected);
     }
 }

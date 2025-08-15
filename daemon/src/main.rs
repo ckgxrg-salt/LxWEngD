@@ -1,10 +1,8 @@
-//! # `LxWEngd` entry
+//! `LxWEngd` entry
 //!
 //! The daemon that operates `linux-wallpaperengine`.
 //! Unless `--standby` is passed in the arguments, the programs attempts to find the default
 //! playlist and runs it on all possible monitors.
-//!
-//! TODO:The daemon listens commands from a socket and executes them until it's stopped.
 
 // logging
 fn setup_logger() -> Result<(), fern::InitError> {

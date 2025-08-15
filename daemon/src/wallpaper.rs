@@ -1,37 +1,37 @@
-//! # Wallpapers
-//!
-//! Provides utils for generating command and summoning linux-wallpaperengine.
+//! Utils for generating command and summoning linux-wallpaperengine.
 
-use crate::runner::RuntimeError;
-
+use smol::process::{Command, Stdio};
 use std::collections::HashMap;
-use std::path::Path;
-use std::time::Duration;
-use subprocess::{Exec, NullFile};
 
+use crate::cli::{CACHE_PATH, CFG};
+
+/// Gets the [`Command`] to start `linux-wallpaperengine`.
 pub fn get_cmd(
     id: u32,
-    cache_path: &Path,
-    binary: Option<&str>,
-    assets_path: Option<&Path>,
     monitor: Option<&str>,
     properties: &HashMap<String, String>,
     defaults: &HashMap<String, String>,
-) -> Exec {
-    let mut engine = Exec::cmd(binary.unwrap_or("linux-wallpaperengine"));
-    if let Some(value) = assets_path {
-        engine = engine.arg("--assets-dir").arg(value);
+) -> Command {
+    let mut cmd = Command::new(CFG.binary.as_deref().unwrap_or("linux-wallpaperengine"));
+    if let Some(value) = &CFG.assets_path {
+        cmd.arg("--assets-dir").arg(value);
     }
-    engine = handle_properties(&intersect(defaults, properties), engine);
+
+    let properties = combine(defaults, properties);
+    handle_properties(&properties, &mut cmd);
+
     if let Some(value) = monitor {
-        engine = engine.arg("--screen-root").arg(value).arg("--bg");
-        // If invoked without --screen-root, linux-wallpaperengine rejects --bg
+        cmd.arg("--screen-root").arg(value).arg("--bg");
     }
-    engine = engine.arg(id.to_string());
-    engine.stdout(NullFile).stderr(NullFile).cwd(cache_path)
+    cmd.arg(id.to_string());
+    cmd.stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .current_dir(CACHE_PATH.to_path_buf());
+    cmd
 }
 
-fn intersect<'a>(
+/// Combine 2 [`HashMap`]s.
+fn combine<'a>(
     base: &'a HashMap<String, String>,
     overrides: &'a HashMap<String, String>,
 ) -> HashMap<String, String> {
@@ -43,43 +43,54 @@ fn intersect<'a>(
     result
 }
 
-fn handle_properties(properties: &HashMap<String, String>, mut engine: Exec) -> Exec {
+fn handle_properties(properties: &HashMap<String, String>, cmd: &mut Command) {
     for (key, value) in properties {
         match key.as_str() {
             "silent" => {
                 if value.parse::<bool>().is_ok_and(|value| value) {
-                    engine = engine.arg("--silent");
+                    cmd.arg("--silent");
                 }
             }
             "audio" => {
                 if value.parse::<bool>().is_ok_and(|value| !value) {
-                    engine = engine.arg("--no-audio-processing");
+                    cmd.arg("--no-audio-processing");
                 }
             }
             "automute" => {
                 if value.parse::<bool>().is_ok_and(|value| !value) {
-                    engine = engine.arg("--no-automute");
+                    cmd.arg("--no-automute");
                 }
             }
             "fullscreen-pause" => {
                 if value.parse::<bool>().is_ok_and(|value| !value) {
-                    engine = engine.arg("--no-fullscreen-pause");
+                    cmd.arg("--no-fullscreen-pause");
                 }
             }
             "mouse" => {
                 if value.parse::<bool>().is_ok_and(|value| !value) {
-                    engine = engine.arg("--disable-mouse");
+                    cmd.arg("--disable-mouse");
                 }
             }
-            "fps" => engine = engine.arg("--fps").arg(value),
-            "volume" => engine = engine.arg("--volume").arg(value),
-            "window" => engine = engine.arg("--window").arg(value),
-            "scaling" => engine = engine.arg("--scaling").arg(value),
-            "clamping" => engine = engine.arg("--clamping").arg(value),
-            _ => engine = engine.arg("--set-property").arg(format!("{key}={value}")),
+            "fps" => {
+                cmd.arg("--fps").arg(value);
+            }
+            "volume" => {
+                cmd.arg("--volume").arg(value);
+            }
+            "window" => {
+                cmd.arg("--window").arg(value);
+            }
+            "scaling" => {
+                cmd.arg("--scaling").arg(value);
+            }
+            "clamping" => {
+                cmd.arg("--clamping").arg(value);
+            }
+            _ => {
+                cmd.arg("--set-property").arg(format!("{key}={value}"));
+            }
         }
     }
-    engine
 }
 
 /// Output properties in form or key-value pairs for dry-run
@@ -91,99 +102,12 @@ pub fn pretty_print(properties: &HashMap<String, String>) -> String {
     result
 }
 
-pub fn summon(cmd: Exec, duration: Duration) -> Result<(), RuntimeError> {
-    let Ok(mut proc) = cmd.popen() else {
-        return Err(RuntimeError::EngineDied);
-    };
-    let result = proc.wait_timeout(duration);
-    match result {
-        // Duration has elapsed
-        Ok(None) => {
-            proc.terminate().unwrap();
-            // Give it some time to finalise
-            proc.wait_timeout(Duration::from_secs(5)).unwrap();
-            proc.kill().unwrap();
-            Ok(())
-        }
-        // Terminated abruptly
-        Ok(Some(_)) | Err(_) => Err(RuntimeError::EngineDied),
-    }
-}
-
-pub fn summon_forever(cmd: Exec) -> RuntimeError {
-    let Ok(mut proc) = cmd.popen() else {
-        return RuntimeError::EngineDied;
-    };
-    // This should block forever unless the child is killed externally
-    let _ = proc.wait();
-    RuntimeError::EngineDied
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
-    fn getting_cmd() {
-        let cmd = get_cmd(
-            114_514,
-            &PathBuf::from("/tmp/lxwengd-dev"),
-            None,
-            Some(&PathBuf::from("ng")),
-            Some("Headless-1"),
-            &HashMap::new(),
-            &HashMap::new(),
-        );
-        assert_eq!(
-            cmd.to_cmdline_lossy(),
-            String::from(
-                "linux-wallpaperengine --assets-dir ng --screen-root Headless-1 --bg 114514"
-            )
-        );
-    }
-
-    #[test]
-    fn applying_properties() {
-        let mut engine = Exec::cmd("vmlinuz");
-        let mut properties = HashMap::new();
-        properties.insert(String::from("fps"), String::from("15"));
-        properties.insert(String::from("scaling"), String::from("destruction"));
-        properties.insert(String::from("clamping"), String::from("boom"));
-        engine = handle_properties(&properties, engine);
-        assert!(engine.to_cmdline_lossy().contains("--fps 15"));
-        assert!(engine.to_cmdline_lossy().contains("--scaling destruction"));
-        assert!(engine.to_cmdline_lossy().contains("--clamping boom"));
-
-        let mut engine = Exec::cmd("./gradlew");
-        let mut properties = HashMap::new();
-        properties.insert(String::from("mouse"), String::from("true"));
-        properties.insert(String::from("automute"), String::from("or"));
-        properties.insert(String::from("audio"), String::from("false"));
-        engine = handle_properties(&properties, engine);
-        assert!(engine.to_cmdline_lossy().contains("--no-audio-processing"));
-        assert!(!engine.to_cmdline_lossy().contains("automute"));
-        assert!(!engine.to_cmdline_lossy().contains("mouse"));
-
-        let mut engine = Exec::cmd("systemd");
-        let mut properties = HashMap::new();
-        properties.insert(String::from("mujica"), String::from("ooo"));
-        properties.insert(String::from("whoknows"), String::from("idk"));
-        engine = handle_properties(&properties, engine);
-        assert!(
-            engine
-                .to_cmdline_lossy()
-                .contains("--set-property 'mujica=ooo'")
-        );
-        assert!(
-            engine
-                .to_cmdline_lossy()
-                .contains("--set-property 'whoknows=idk'")
-        );
-    }
-
-    #[test]
-    fn intersect_properties() {
+    fn combine_properties() {
         let mut base = HashMap::new();
         base.insert(String::from("unknown"), String::from("unknown"));
         base.insert(String::from("known"), String::from("still unknown"));
@@ -200,6 +124,6 @@ mod tests {
         expected.insert(String::from("xixi"), String::from("noxixi"));
         expected.insert(String::from("woo"), String::from("hoo"));
 
-        assert_eq!(intersect(&base, &overrides), expected);
+        assert_eq!(combine(&base, &overrides), expected);
     }
 }

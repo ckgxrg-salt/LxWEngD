@@ -5,7 +5,7 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-static CFG: LazyLock<Config> = LazyLock::new(parse);
+pub static CFG: LazyLock<Config> = LazyLock::new(parse);
 pub static SEARCH_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     sys_config_dir().unwrap_or_else(|| {
         log::warn!("cannot find search path as $XDG_CONFIG_HOME and $HOME are not valid");
@@ -13,7 +13,7 @@ pub static SEARCH_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
         PathBuf::from("")
     })
 });
-static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(sys_cache_dir);
+pub static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(sys_cache_dir);
 
 #[derive(Parser)]
 #[command(
@@ -53,19 +53,19 @@ struct Cli {
 }
 
 struct Config {
-    playlist: PathBuf,
-    assets_path: Option<PathBuf>,
-    binary: Option<String>,
+    pub default_playlist: PathBuf,
+    pub assets_path: Option<PathBuf>,
+    pub binary: Option<String>,
 }
 fn parse() -> Config {
     let parsed = Cli::parse();
-    let playlist = if let Some(value) = parsed.playlist {
+    let default_playlist = if let Some(value) = parsed.playlist {
         value
     } else {
         PathBuf::from("default.playlist")
     };
     Config {
-        playlist,
+        default_playlist,
         assets_path: parsed.assets_path,
         binary: parsed.binary,
     }

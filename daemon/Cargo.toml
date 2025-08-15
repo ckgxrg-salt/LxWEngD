@@ -12,7 +12,6 @@ duration-str = "0.13.0"
 fern = "0.7.1"
 log = "0.4.26"
 smol = "2.0.2"
-subprocess = "0.2.9"
 thiserror = "2.0.14"
 
 [dependencies.chrono]
