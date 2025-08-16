@@ -1,7 +1,6 @@
 //! Finds playlist files in some given search path.
 
 use std::{
-    collections::BTreeMap,
     fs::File,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -53,45 +52,41 @@ pub fn open(filename: &Path) -> Result<File, FileNotFound> {
 /// Parses a playlist file and generates a list of [`Command`]
 /// This process will load the playlist file into memory, parse it, and generate a list of
 /// [`Command`].
-pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
-    let mut commands = BTreeMap::new();
-    let lines: Vec<String> = BufReader::new(file)
+pub fn parse(path: &Path, file: &File) -> Vec<Command> {
+    BufReader::new(file)
         .lines()
         .enumerate()
-        .map(|(num, line)| {
-            line.unwrap_or_else(|err| {
-                log::warn!(
-                    "{0} line {1}: {2}, ignoring",
-                    path.to_string_lossy(),
-                    num + 1,
-                    err
-                );
-                String::new()
-            })
-            .trim()
-            .to_string()
-        })
-        .collect();
-    for (num, each) in lines.iter().enumerate() {
-        // Ignore comments
-        if each.starts_with('#') || each.is_empty() {
-            continue;
-        }
-        match identify(each) {
-            Ok(cmd) => {
-                commands.insert(num, cmd);
+        .filter_map(|(line_no, line)| match line {
+            Ok(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    None
+                } else {
+                    match identify(trimmed) {
+                        Ok(cmd) => Some(cmd),
+                        Err(err) => {
+                            log::warn!(
+                                "{} cmd no.{}: {}, skipping",
+                                path.to_string_lossy(),
+                                line_no + 1,
+                                err
+                            );
+                            None
+                        }
+                    }
+                }
             }
             Err(err) => {
                 log::warn!(
-                    "{0} line {1}: {2}, skipping",
+                    "{} line {}: {}, ignoring",
                     path.to_string_lossy(),
-                    num + 1,
-                    err
+                    line_no + 1,
+                    err,
                 );
+                None
             }
-        }
-    }
-    commands
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -123,10 +118,7 @@ mod tests {
             Command::Wallpaper(3, Duration::from_secs(360), false, HashMap::new()),
             Command::Wait(Duration::from_secs(5 * 60)),
             Command::End,
-        ]
-        .into_iter()
-        .enumerate()
-        .collect();
+        ];
         assert_eq!(commands, expected);
     }
 }

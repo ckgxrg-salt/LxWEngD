@@ -9,17 +9,14 @@ use nix::{
     unistd::Pid,
 };
 use smol::channel::{Receiver, Sender, TrySendError};
-use std::{
-    collections::{BTreeMap, HashMap},
-    path::PathBuf,
-};
+use std::{collections::HashMap, path::PathBuf};
 use thiserror::Error;
 
 pub struct Runner {
     name: String,
     index: usize,
     path: PathBuf,
-    commands: BTreeMap<usize, Command>,
+    commands: Vec<Command>,
     default: HashMap<String, String>,
 
     channel: (Sender<RunnerAction>, Receiver<RunnerAction>),
@@ -89,16 +86,12 @@ impl Runner {
             log::error!("no commands to execute, exiting");
             return;
         }
-        let Some((&length, _)) = self.commands.last_key_value() else {
-            log::error!("invalid playlist file");
-            return;
-        };
 
         loop {
-            if self.index > length {
+            if self.index > self.commands.len() {
                 self.index = 0;
             }
-            let Some(current_cmd) = self.commands.get(&self.index) else {
+            let Some(current_cmd) = self.commands.get(self.index) else {
                 self.index += 1;
                 continue;
             };
@@ -160,9 +153,9 @@ impl Runner {
         match exit {
             ExitType::Exited => {
                 log::warn!(
-                    "{} line {}: `linux-wallpaperengine` unexpectedly exited",
+                    "{} cmd no.{}: `linux-wallpaperengine` unexpectedly exited",
                     self.path.to_string_lossy(),
-                    self.index,
+                    self.index + 1,
                 );
                 None
             }
@@ -174,9 +167,9 @@ impl Runner {
                 .is_err()
                 {
                     log::warn!(
-                        "{} line {}: failed to terminate `linux-wallpaperengine`",
+                        "{} cmd no.{}: failed to terminate `linux-wallpaperengine`",
                         self.path.to_string_lossy(),
-                        self.index,
+                        self.index + 1,
                     );
                 }
                 Some(action)
