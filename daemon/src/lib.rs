@@ -1,7 +1,7 @@
 pub mod cli;
-pub mod commands;
-pub mod playlist;
-pub mod resume;
-pub mod runner;
-pub mod socket;
+mod commands;
+mod playlist;
+mod resume;
+mod runner;
+mod socket;
 mod wallpaper;

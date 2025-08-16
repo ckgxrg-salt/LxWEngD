@@ -1,10 +1,11 @@
 //! Finds playlist files in some given search path.
-#![warn(clippy::pedantic)]
 
-use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs::File,
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 
 use crate::cli::SEARCH_PATH;
@@ -103,7 +104,7 @@ mod tests {
 
     #[test]
     fn find_playlist() {
-        let mut content: String = String::from("");
+        let mut content: String = String::new();
         // Fully qualified path
         open(&PathBuf::from("./playlists/open_test.playlist"))
             .unwrap()
@@ -135,7 +136,7 @@ mod tests {
 
         let expected = vec![
             Command::Wallpaper(1, Duration::from_secs(15 * 60), false, HashMap::new()),
-            Command::Wallpaper(2, Duration::from_secs(1 * 60 * 60), false, HashMap::new()),
+            Command::Wallpaper(2, Duration::from_secs(60 * 60), false, HashMap::new()),
             Command::Wallpaper(3, Duration::from_secs(360), false, HashMap::new()),
             Command::Wait(Duration::from_secs(5 * 60)),
             Command::End,

@@ -2,11 +2,8 @@
 //!
 //! Also provides a function to parse strings to commands.
 
-use std::collections::HashMap;
-use std::error::Error;
-use std::fmt::Display;
-use std::str::SplitWhitespace;
-use std::time::Duration;
+use std::{collections::HashMap, str::SplitWhitespace, time::Duration};
+use thiserror::Error;
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
@@ -22,33 +19,20 @@ pub enum Command {
     Default(HashMap<String, String>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum ParseError {
     /// Indicates that this line is not a recognised command.
     /// Blank lines are also treated as invalid commands.
+    #[error("unrecognised command")]
     CommandNotFound,
     /// The command requires some arguments, but not enough are provided.
     /// Note that if you use `#` to comment in the line, anything after that `#` will be ignored.
+    #[error("not enough arguments to this command")]
     NotEnoughArguments,
     /// The command requires an argument of a specific type, but the given one cannot be parsed
     /// into that type.
+    #[error("invalid arguments give to this command")]
     InvalidArgument,
-}
-impl Error for ParseError {}
-impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ParseError::CommandNotFound => {
-                write!(f, "Unrecognised command")
-            }
-            ParseError::NotEnoughArguments => {
-                write!(f, "Not enough arguments are given to the command")
-            }
-            ParseError::InvalidArgument => {
-                write!(f, "Arguments given to the command are invalid")
-            }
-        }
-    }
 }
 
 /// Parse strings.

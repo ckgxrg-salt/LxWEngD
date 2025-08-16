@@ -52,7 +52,7 @@ struct Cli {
     standby: bool,
 }
 
-struct Config {
+pub struct Config {
     pub default_playlist: PathBuf,
     pub assets_path: Option<PathBuf>,
     pub binary: Option<String>,
@@ -70,6 +70,7 @@ fn parse() -> Config {
         binary: parsed.binary,
     }
 }
+
 fn sys_cache_dir() -> PathBuf {
     // linux-wallpaperengine generates some cache
     if let Ok(mut value) = env::var("XDG_CACHE_HOME") {
@@ -83,6 +84,7 @@ fn sys_cache_dir() -> PathBuf {
     // This is not persistent anyhow
     PathBuf::from("/tmp/lxwengd")
 }
+
 fn sys_config_dir() -> Option<PathBuf> {
     let default;
     if let Ok(value) = env::var("XDG_CONFIG_HOME") {
@@ -93,4 +95,38 @@ fn sys_config_dir() -> Option<PathBuf> {
         return None;
     }
     Some(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn playlist_location() {
+        unsafe {
+            env::set_var("XDG_CONFIG_HOME", ".");
+            assert_eq!(sys_config_dir().unwrap(), PathBuf::from("./lxwengd"));
+            env::remove_var("XDG_CONFIG_HOME");
+            env::set_var("HOME", ".");
+            assert_eq!(
+                sys_config_dir().unwrap(),
+                PathBuf::from("./.config/lxwengd")
+            );
+            env::remove_var("HOME");
+            assert!(sys_config_dir().is_none());
+        }
+    }
+
+    #[test]
+    fn cache_location() {
+        unsafe {
+            env::set_var("XDG_CACHE_HOME", ".");
+            assert_eq!(sys_cache_dir(), PathBuf::from("./lxwengd"));
+            env::remove_var("XDG_CACHE_HOME");
+            env::set_var("HOME", ".");
+            assert_eq!(sys_cache_dir(), PathBuf::from("./.cache/lxwengd"));
+            env::remove_var("HOME");
+            assert_eq!(sys_cache_dir(), PathBuf::from("/tmp/lxwengd"));
+        }
+    }
 }

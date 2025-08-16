@@ -1,10 +1,6 @@
 //! Handles the socket and possible daemon commands
 
-use smol::{
-    io::AsyncReadExt,
-    net::unix::{UnixListener, UnixStream},
-    stream::StreamExt,
-};
+use smol::{io::AsyncReadExt, net::unix::UnixListener, stream::StreamExt};
 use std::{path::PathBuf, str::FromStr};
 use thiserror::Error;
 
