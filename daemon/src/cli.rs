@@ -101,8 +101,10 @@ fn sys_config_dir() -> Option<PathBuf> {
 mod tests {
     use super::*;
 
+    // Due to [`env::set_var()`] not being thread-safe, just chain them so the variables are not
+    // messed around.
     #[test]
-    fn playlist_location() {
+    fn getting_locations() {
         unsafe {
             env::set_var("XDG_CONFIG_HOME", ".");
             assert_eq!(sys_config_dir().unwrap(), PathBuf::from("./lxwengd"));
@@ -114,17 +116,12 @@ mod tests {
             );
             env::remove_var("HOME");
             assert!(sys_config_dir().is_none());
-        }
-    }
 
-    #[test]
-    fn cache_location() {
-        unsafe {
-            env::set_var("XDG_CACHE_HOME", ".");
-            assert_eq!(sys_cache_dir(), PathBuf::from("./lxwengd"));
+            env::set_var("XDG_CACHE_HOME", "/some_cachey_place");
+            assert_eq!(sys_cache_dir(), PathBuf::from("/some_cachey_place/lxwengd"));
             env::remove_var("XDG_CACHE_HOME");
-            env::set_var("HOME", ".");
-            assert_eq!(sys_cache_dir(), PathBuf::from("./.cache/lxwengd"));
+            env::set_var("HOME", "/somewhere");
+            assert_eq!(sys_cache_dir(), PathBuf::from("/somewhere/.cache/lxwengd"));
             env::remove_var("HOME");
             assert_eq!(sys_cache_dir(), PathBuf::from("/tmp/lxwengd"));
         }

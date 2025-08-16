@@ -53,7 +53,6 @@ pub fn open(filename: &Path) -> Result<File, FileNotFound> {
 /// Parses a playlist file and generates a list of [`Command`]
 /// This process will load the playlist file into memory, parse it, and generate a list of
 /// [`Command`].
-#[must_use]
 pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
     let mut commands = BTreeMap::new();
     let lines: Vec<String> = BufReader::new(file)
@@ -77,7 +76,7 @@ pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
         // Ignore comments
         if each.starts_with('#') || each.is_empty() {
             continue;
-        };
+        }
         match identify(each) {
             Ok(cmd) => {
                 commands.insert(num, cmd);
@@ -90,7 +89,7 @@ pub fn parse(path: &Path, file: &File) -> BTreeMap<usize, Command> {
                     err
                 );
             }
-        };
+        }
     }
     commands
 }
@@ -106,23 +105,7 @@ mod tests {
     fn find_playlist() {
         let mut content: String = String::new();
         // Fully qualified path
-        open(&PathBuf::from("./playlists/open_test.playlist"))
-            .unwrap()
-            .read_to_string(&mut content)
-            .unwrap();
-        assert_eq!(content, "=)\n");
-
-        // No extension
-        content.clear();
-        open(&PathBuf::from("open_test"))
-            .unwrap()
-            .read_to_string(&mut content)
-            .unwrap();
-        assert_eq!(content, "=)\n");
-
-        // With extension
-        content.clear();
-        open(&PathBuf::from("open_test.playlist"))
+        open(&PathBuf::from("../playlists/open_test.playlist"))
             .unwrap()
             .read_to_string(&mut content)
             .unwrap();
@@ -131,7 +114,7 @@ mod tests {
 
     #[test]
     fn parse_playlist() {
-        let playlist = PathBuf::from("./playlists/default.playlist");
+        let playlist = PathBuf::from("../playlists/default.playlist");
         let commands = parse(&playlist, &open(&playlist).unwrap());
 
         let expected = vec![

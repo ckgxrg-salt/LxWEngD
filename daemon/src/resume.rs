@@ -76,7 +76,7 @@ mod tests {
         let mut file = std::fs::File::open("save.playlist.resume").unwrap();
         let mut buffer = [0_u8; std::mem::size_of::<usize>()];
         file.read_exact(&mut buffer).unwrap();
-        fs::remove_file("save.playlist.resume").unwrap();
+        std::fs::remove_file("save.playlist.resume").unwrap();
 
         assert_eq!(usize::from_be_bytes(buffer), 5_usize);
     }
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn test_exceed() {
-        let mut file = fs::File::create("exceed.playlist.resume").unwrap();
+        let mut file = std::fs::File::create("exceed.playlist.resume").unwrap();
         file.write_all(&8_usize.to_be_bytes()).unwrap();
 
         let result = load_state(&PathBuf::from("exceed.playlist"), 4);

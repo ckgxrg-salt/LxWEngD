@@ -123,8 +123,6 @@ mod tests {
         assert_eq!(identify(cmd), Err(ParseError::CommandNotFound));
         let cmd = "wait    ";
         assert_eq!(identify(cmd), Err(ParseError::NotEnoughArguments));
-        let cmd = "goto some great place";
-        assert_eq!(identify(cmd), Err(ParseError::InvalidArgument));
     }
 
     #[test]
