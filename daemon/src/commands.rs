@@ -12,6 +12,7 @@ pub enum Command {
     /// Last arguments are a list of key-value pairs for recognised properties.
     Wallpaper(u32, Duration, bool, HashMap<String, String>),
     /// Sleeps for given duration.
+    /// TODO: Remove this
     Wait(Duration),
     /// Ends the playlist.
     End,

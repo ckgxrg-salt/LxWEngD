@@ -2,14 +2,13 @@
 //!
 //! Errors are printed to stderr and the runner will continue to operate.
 
-use crate::{commands::Command, playlist, wallpaper};
+mod pause;
+mod subprocess;
 
-use nix::{
-    sys::signal::{Signal, kill},
-    unistd::Pid,
-};
+use crate::{commands::Command, utils::playlist};
+
 use smol::channel::{Receiver, Sender, TrySendError};
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 use thiserror::Error;
 
 pub struct Runner {
@@ -19,7 +18,7 @@ pub struct Runner {
     commands: Vec<Command>,
     default: HashMap<String, String>,
 
-    channel: (Sender<RunnerAction>, Receiver<RunnerAction>),
+    channel: (Sender<Action>, Receiver<Action>),
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -32,27 +31,36 @@ pub enum RunnerError {
     EngineDied,
 }
 
-/// How the subprocess task exited.
-enum ExitType {
-    Success,
-    Exited,
-    WithAction(RunnerAction),
+/// Runner's state
+enum State {
+    Running,
+    /// Stores [`Duration`] that has elapsed since last command.
+    Paused(Duration),
+    /// Received a [`RunnerAction`] and is executing that command.
+    Execute(Command),
 }
 
 /// An action can be requested for the [`Runner`] to perform.
-pub enum RunnerAction {
-    /// Jump to next [`Command`]
+pub enum Action {
+    /// Jump to next [`Command`].
     Next,
-    /// Jump to previous [`Command`]
+    /// Jump to previous [`Command`].
     Prev,
+    /// Jump to a certain [`Command`].
+    Goto(usize),
+
+    /// Execute a [`Command`] specified by the user manually.
+    Exec(Command),
     /// Pause current [`Command`]. bool indicates whether to SIGHUP the child instead
     /// of terminating.
     Pause(bool),
-    /// Similar to above, but instead of terminating child, SIGHUP them.
+
+    /// Resumes normal operation.
     Resume,
-    /// Terminates the [`Runner`] because of user request
+
+    /// Terminates the [`Runner`] because of user request.
     Exit,
-    /// Terminates the [`Runner`] because of an error
+    /// Terminates the [`Runner`] because of an error.
     Error,
 }
 
@@ -112,69 +120,12 @@ impl Runner {
     }
 
     /// Requests the runner to perform an [`RunnerAction`].
+    /// Doing so will interrupt this [`Runner`]'s current task.
     ///
     /// # Errors
     /// See [`smol::channel::Sender::try_send`].
     /// If an error happens here, the [`Runner`] should be terminated forcefully.
-    pub fn request_action(
-        &mut self,
-        action: RunnerAction,
-    ) -> Result<(), TrySendError<RunnerAction>> {
+    pub fn request_action(&mut self, action: Action) -> Result<(), TrySendError<Action>> {
         self.channel.0.try_send(action)
-    }
-
-    /// Displays a wallpaper.
-    ///
-    /// # Returns
-    /// - `None` if everything good.
-    /// - `Some(RunnerAction)` if an action needs to be performed by the main task.
-    async fn summon_wallpaper(
-        &self,
-        id: u32,
-        properties: &HashMap<String, String>,
-    ) -> Option<RunnerAction> {
-        // TODO: check whether monitor is valid
-        let mut cmd = wallpaper::get_cmd(id, Some(&self.name), properties, &self.default);
-        let mut child = cmd.spawn().unwrap();
-        let pid = child.id();
-
-        let exit = smol::future::race(
-            async {
-                let _ = child.status().await;
-                ExitType::Exited
-            },
-            async {
-                let action = self.channel.1.recv().await.unwrap_or(RunnerAction::Error);
-                ExitType::WithAction(action)
-            },
-        )
-        .await;
-
-        match exit {
-            ExitType::Exited => {
-                log::warn!(
-                    "{} cmd no.{}: `linux-wallpaperengine` unexpectedly exited",
-                    self.path.to_string_lossy(),
-                    self.index + 1,
-                );
-                None
-            }
-            ExitType::WithAction(action) => {
-                if kill(
-                    Pid::from_raw(pid.try_into().expect("pid won't go that large")),
-                    Signal::SIGTERM,
-                )
-                .is_err()
-                {
-                    log::warn!(
-                        "{} cmd no.{}: failed to terminate `linux-wallpaperengine`",
-                        self.path.to_string_lossy(),
-                        self.index + 1,
-                    );
-                }
-                Some(action)
-            }
-            ExitType::Success => unreachable!(),
-        }
     }
 }

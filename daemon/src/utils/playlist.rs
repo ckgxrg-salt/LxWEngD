@@ -49,9 +49,7 @@ pub fn open(filename: &Path) -> Result<File, FileNotFound> {
     Err(FileNotFound(filename.to_path_buf()))
 }
 
-/// Parses a playlist file and generates a list of [`Command`]
-/// This process will load the playlist file into memory, parse it, and generate a list of
-/// [`Command`].
+/// Parses a playlist file and generates a list of [`Command`]s.
 pub fn parse(path: &Path, file: &File) -> Vec<Command> {
     BufReader::new(file)
         .lines()
