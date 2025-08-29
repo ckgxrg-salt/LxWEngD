@@ -7,8 +7,8 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::cli::SEARCH_PATH;
 use crate::commands::{Command, identify};
+use crate::entry::SEARCH_PATH;
 
 #[derive(Debug, PartialEq, Error)]
 #[error("cannot find playlist file `{0}`")]

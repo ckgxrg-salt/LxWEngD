@@ -1,9 +1,18 @@
-//! Program main loop
+//! `LxWEngd` entry
+//!
+//! The daemon that operates `linux-wallpaperengine`.
+//! Unless `--standby` is passed in the arguments, the programs attempts to find the default
+//! playlist and runs it on all possible monitors.
 
 use clap::Parser;
+use std::collections::HashMap;
 use std::env;
+use std::error::Error;
 use std::path::PathBuf;
 use std::sync::LazyLock;
+
+use crate::runner::Runner;
+use crate::socket::{Socket, SocketError};
 
 pub static CFG: LazyLock<Config> = LazyLock::new(parse);
 pub static SEARCH_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -95,6 +104,43 @@ fn sys_config_dir() -> Option<PathBuf> {
         return None;
     }
     Some(default)
+}
+
+fn setup_logger() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {}] {}",
+                chrono::Local::now().format("%H:%M:%S"),
+                record.level(),
+                message
+            ));
+        })
+        .chain(std::io::stdout())
+        .apply()?;
+    Ok(())
+}
+
+/// The real entry.
+///
+/// # Errors
+/// Fatal errors that will cause the program to exit will be returned here.
+pub async fn start() -> Result<(), Box<dyn Error>> {
+    // If cache directory does not exist, create it
+    if !CACHE_PATH.is_dir() {
+        std::fs::create_dir(CACHE_PATH.as_path()).inspect_err(|err| {
+            eprintln!("failed to create cache directory: {err}");
+        })?;
+    }
+    setup_logger()?;
+
+    let socket =
+        Socket::new().inspect_err(|err| eprintln!("failed to create unix socket: {err}"))?;
+    let runners: HashMap<String, Runner> = HashMap::new();
+
+    socket.listen().await;
+
+    Ok(())
 }
 
 #[cfg(test)]
