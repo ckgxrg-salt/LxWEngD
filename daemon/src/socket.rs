@@ -64,9 +64,11 @@ pub enum SocketError {
     InitFailed,
     #[error("unrecognised commmand")]
     UnknownCmd,
+    #[error("socket internal error")]
+    InternalError,
 }
 
-struct Socket {
+pub struct Socket {
     listener: UnixListener,
 }
 
@@ -81,30 +83,16 @@ impl Socket {
         })
     }
 
-    /// Listens for connections
-    pub async fn listen(&self) {
+    /// Listens for connections, and then handles [`DaemonCmd`]s.
+    /// This reads the first possible [`DaemonCmd`] and then shuts down the connection.
+    pub async fn listen(&self) -> Result<DaemonCmd, SocketError> {
         let mut incoming = self.listener.incoming();
-        while let Some(Ok(mut conn)) = incoming.next().await {
+        if let Some(Ok(mut conn)) = incoming.next().await {
             let mut content = String::new();
             let _ = conn.read_to_string(&mut content).await;
-            match parse_cmd(&content) {
-                Ok(DaemonCmd::Play(target)) => todo!(),
-                Ok(DaemonCmd::Pause(keep, target)) => todo!(),
-                Ok(DaemonCmd::Toggle(target)) => todo!(),
-                Ok(DaemonCmd::Status) => todo!(),
-                Ok(DaemonCmd::Load {
-                    path,
-                    id,
-                    paused,
-                    resume,
-                }) => todo!(),
-                Ok(DaemonCmd::Unload(no_resume, target)) => todo!(),
-                Ok(DaemonCmd::Quit) => break,
-                Err(err) => {
-                    log::error!("{err}");
-                }
-            }
+            return parse_cmd(&content);
         }
+        Err(SocketError::InternalError)
     }
 }
 
@@ -209,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn sending_quit() {
+    fn receiving_command() {
         let socket = Socket {
             listener: smol::net::unix::UnixListener::bind("/tmp/lxwengd-test.sock").unwrap(),
         };
@@ -224,8 +212,9 @@ mod tests {
         smol::block_on(async {
             smol::future::race(
                 async {
-                    socket.listen().await;
+                    let result = socket.listen().await;
                     std::fs::remove_file("/tmp/lxwengd-test.sock").unwrap();
+                    assert_eq!(result, Ok(DaemonCmd::Quit));
                 },
                 async {
                     smol::Timer::after(Duration::from_secs(1)).await;
