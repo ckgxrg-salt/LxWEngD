@@ -2,5 +2,5 @@
 2 1hour
 3 360
 # This line is comment
-wait 5min
+sleep 5min
 end

@@ -12,21 +12,15 @@ If both "<filename>" and "<filename>.playlist" are found in the search path, the
 
 `#` may be used to comment in the file. Empty lines will be ignored.
 
-In the beginning of the file, you may use this command:
-```
-monitor <monitor id>
-```
-to indicate which monitor this playlist is going to be displayed on.
-If you didn't indicate this, the wallpapers will be displayed in a window.
-
 Define a wallpaper in this format:
 ```
-<wallpaper id> [duration] [property1=value] [property2=value] ...
+<wallpaper id> <duration> [property1=value] [property2=value] ...
 ```
+
 `<wallpaper id>` must be specified, which is exactly what you will specify as in `linux-wallpaperengine`'s cmdline. View this id from Steam Workshop URL or anywhere you wish.
 
-`[duration]` indicates how long this wallpaper should be displayed. Plain numbers will be treated as seconds, you may also use a value plus an unit such as `15m`, `1h`. If duration is not specified, it is equivalent as `forever`, which displays the wallpaper until the daemon quits.
-Note that `forever` does not necessarily means the end of playlist, if the child process failed or is killed externally due to OOM or else, the daemon can still progress forwards, generating an "engine died" warning instead.
+`<duration>` indicates how long this wallpaper should be displayed. Plain numbers will be treated as seconds, you may also use a value plus an unit such as `15m`, `1h`, or `infinite`, which displays the wallpaper until the daemon quits.
+Note that `infinite` does not necessarily means the end of playlist, if the child process failed or is killed externally due to OOM or else, the daemon can still progress forwards, generating an "engine died" warning instead.
 
 A list of properties may be passed using key=value pairs.
 These properties are passed `linux-wallpaperengine` as arguments.
@@ -62,7 +56,6 @@ There are also some other commands to use in the file:
 - `goto <location> [times]` jumps to a specific line of the playlist and executes the command on that line. `<location>` of course is the line number starting from 1. `[times]` indicates how many times this `goto` sentence may have effect, so `goto 0 1` makes the playlist play over again, but will not go back again because of this `goto`, `0` indicates this `goto` sentence have permanent effect.
 - `replace <playlist file>` changes the playlist the daemon is currently playing, starting from line 1 of the given playlist. If the given playlist cannot be found, then this line will be similar to `end`.
 - `summon <playlist file>` is similar to `replace`, but instead of changing the playlist, it opens a new thread running the indicated playlist. So if the given playlist failed or quitted, the original thread is unaffected.
-- `monitor <monitor id>` is as stated above, changes the monitor the playlist will be displayed on.
 - `default [property=value]...` is described above.
 
 If any command contains invalid value, or has bad syntax, the daemon will skip that line and generate a warning only.

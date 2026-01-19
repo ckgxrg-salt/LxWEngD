@@ -105,9 +105,9 @@ impl Runner {
             };
             self.index += 1;
             match current_cmd {
-                Command::Wallpaper(id, duration, forever, properties) => {}
-                Command::Wait(duration) => {
-                    smol::Timer::after(*duration).await;
+                Command::Wallpaper(id, duration, properties) => {}
+                Command::Sleep(duration) => {
+                    // smol::Timer::after(*duration).await;
                 }
                 Command::Default(properties) => {
                     properties.clone_into(&mut self.default);

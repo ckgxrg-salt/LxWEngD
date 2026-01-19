@@ -7,7 +7,7 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::commands::{Command, identify};
+use crate::commands::{Command, WallpaperDuration, parse as parse_cmd};
 use crate::entry::SEARCH_PATH;
 
 #[derive(Debug, PartialEq, Error)]
@@ -60,7 +60,7 @@ pub fn parse(path: &Path, file: &File) -> Vec<Command> {
                 if trimmed.is_empty() || trimmed.starts_with('#') {
                     None
                 } else {
-                    match identify(trimmed) {
+                    match parse_cmd(trimmed) {
                         Ok(cmd) => Some(cmd),
                         Err(err) => {
                             log::warn!(
@@ -111,10 +111,22 @@ mod tests {
         let commands = parse(&playlist, &open(&playlist).unwrap());
 
         let expected = vec![
-            Command::Wallpaper(1, Duration::from_secs(15 * 60), false, HashMap::new()),
-            Command::Wallpaper(2, Duration::from_secs(60 * 60), false, HashMap::new()),
-            Command::Wallpaper(3, Duration::from_secs(360), false, HashMap::new()),
-            Command::Wait(Duration::from_secs(5 * 60)),
+            Command::Wallpaper(
+                "1".to_string(),
+                WallpaperDuration::Finite(Duration::from_secs(15 * 60)),
+                HashMap::new(),
+            ),
+            Command::Wallpaper(
+                "2".to_string(),
+                WallpaperDuration::Finite(Duration::from_secs(60 * 60)),
+                HashMap::new(),
+            ),
+            Command::Wallpaper(
+                "3".to_string(),
+                WallpaperDuration::Finite(Duration::from_secs(360)),
+                HashMap::new(),
+            ),
+            Command::Sleep(WallpaperDuration::Finite(Duration::from_secs(5 * 60))),
             Command::End,
         ];
         assert_eq!(commands, expected);
