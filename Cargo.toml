@@ -2,7 +2,16 @@
 resolver = "3"
 members = ["daemon", "cli"]
 
+[workspace.lints.clippy]
+pedantic = "warn"
+
 [workspace.package]
 version = "1.1.0"
-authors = ["ckgxrg <ckgxrg@gmail.com>"]
-publish = false
+authors = ["ckgxrg <ckgxrg@ckgxrg.io>"]
+edition = "2024"
+license = "BSD 2 Clause"
+description = "A daemon that adds playlists to linux-wallpaperengine."
+repository = "https://codeberg.org/ckgxrg/LxWEngd"
+
+[workspace.dependencies]
+clap = { version = "4.5.43", features = ["derive"] }

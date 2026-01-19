@@ -1,11 +1,14 @@
 [package]
 name = "lxwengctl"
+description = "CLI to interact with the daemon"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lints.clippy]
 pedantic = "warn"
 
 [dependencies]
-clap = { version = "4.5.43", features = ["derive"] }
+clap.workspace = true
 display-info = "0.5.4"
