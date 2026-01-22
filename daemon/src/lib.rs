@@ -1,5 +1,3 @@
-mod commands;
-pub mod entry;
+pub mod daemon;
 mod runner;
-mod socket;
 mod utils;

@@ -3,7 +3,7 @@
 use smol::process::{Command, Stdio};
 use std::collections::HashMap;
 
-use crate::entry::{CACHE_PATH, CFG};
+use crate::daemon::{CACHE_PATH, CFG};
 
 /// Gets the [`Command`] to start `linux-wallpaperengine`.
 pub fn get_cmd(

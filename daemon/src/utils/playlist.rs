@@ -1,18 +1,11 @@
 //! Finds playlist files in some given search path.
 
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-    path::{Path, PathBuf},
-};
-use thiserror::Error;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
 
-use crate::commands::{Command, WallpaperDuration, parse as parse_cmd};
-use crate::entry::SEARCH_PATH;
-
-#[derive(Debug, PartialEq, Error)]
-#[error("cannot find playlist file `{0}`")]
-pub struct FileNotFound(PathBuf);
+use super::command::{Command, parse as parse_cmd};
+use crate::daemon::SEARCH_PATH;
 
 /// Searches the given playlist in the given search path.
 ///
@@ -22,18 +15,18 @@ pub struct FileNotFound(PathBuf);
 /// Finally, tries to find a file relative to `search_path` with name `filename.playlist`.
 ///
 /// # Errors
-/// If none of these approaches can find a playlist file, returns `FileNotFound`.
-pub fn open(filename: &Path) -> Result<File, FileNotFound> {
+/// If none of these approaches can find a playlist file, returns an [`std::io::Error`].
+pub fn open(filename: &Path) -> std::io::Result<File> {
     // Fully qualified path
     if filename.is_file() {
-        return Ok(File::open(filename).map_err(|_| FileNotFound(filename.to_path_buf())))?;
+        return Ok(File::open(filename)?);
     }
 
     // Relative to default with extension
     let mut real_path = SEARCH_PATH.to_path_buf();
     real_path.push(filename);
     if real_path.is_file() {
-        return Ok(File::open(&real_path).map_err(|_| FileNotFound(real_path)))?;
+        return Ok(File::open(&real_path)?);
     }
 
     // Relative to default without extension
@@ -42,11 +35,7 @@ pub fn open(filename: &Path) -> Result<File, FileNotFound> {
     let mut temp = real_path.into_os_string();
     temp.push(".playlist");
     let real_path = PathBuf::from(temp);
-    if real_path.is_file() {
-        return Ok(File::open(&real_path).map_err(|_| FileNotFound(real_path)))?;
-    }
-
-    Err(FileNotFound(filename.to_path_buf()))
+    Ok(File::open(&real_path)?)
 }
 
 /// Parses a playlist file and generates a list of [`Command`]s.
@@ -64,7 +53,7 @@ pub fn parse(path: &Path, file: &File) -> Vec<Command> {
                         Ok(cmd) => Some(cmd),
                         Err(err) => {
                             log::warn!(
-                                "{} cmd no.{}: {}, skipping",
+                                "{}:{} error: {}, skipping",
                                 path.to_string_lossy(),
                                 line_no + 1,
                                 err
@@ -76,7 +65,7 @@ pub fn parse(path: &Path, file: &File) -> Vec<Command> {
             }
             Err(err) => {
                 log::warn!(
-                    "{} line {}: {}, ignoring",
+                    "{}:{} error: {}, ignoring",
                     path.to_string_lossy(),
                     line_no + 1,
                     err,
@@ -90,6 +79,7 @@ pub fn parse(path: &Path, file: &File) -> Vec<Command> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::command::WallpaperDuration;
     use std::collections::HashMap;
     use std::io::Read;
     use std::time::Duration;

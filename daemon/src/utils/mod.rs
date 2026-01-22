@@ -1,3 +1,5 @@
+pub mod command;
 pub mod playlist;
-pub mod resume;
+pub mod socket;
+pub mod state;
 pub mod subprocess;

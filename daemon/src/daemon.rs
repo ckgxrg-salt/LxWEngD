@@ -12,12 +12,12 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 
 use crate::runner::Runner;
-use crate::socket::{Socket, SocketError};
+use crate::utils::socket::{Socket, SocketError};
 
 pub static CFG: LazyLock<Config> = LazyLock::new(parse);
 pub static SEARCH_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     sys_config_dir().unwrap_or_else(|| {
-        log::warn!("cannot find search path as $XDG_CONFIG_HOME and $HOME are not valid");
+        log::warn!("Cannot find search path as $XDG_CONFIG_HOME and $HOME are not valid");
         // If fully qualified name is passed, this value does not matter
         PathBuf::from("")
     })
@@ -65,6 +65,7 @@ pub struct Config {
     pub default_playlist: PathBuf,
     pub assets_path: Option<PathBuf>,
     pub binary: Option<String>,
+    pub standby: bool,
 }
 fn parse() -> Config {
     let parsed = Cli::parse();
@@ -77,6 +78,7 @@ fn parse() -> Config {
         default_playlist,
         assets_path: parsed.assets_path,
         binary: parsed.binary,
+        standby: parsed.standby,
     }
 }
 
@@ -121,7 +123,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
     Ok(())
 }
 
-/// The real entry.
+/// The real start.
 ///
 /// # Errors
 /// Fatal errors that will cause the program to exit will be returned here.

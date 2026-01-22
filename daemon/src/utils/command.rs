@@ -10,6 +10,7 @@ use nom::multi::separated_list0;
 use nom::sequence::{pair, separated_pair};
 use nom::{Finish, IResult, Parser};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -33,10 +34,10 @@ pub enum WallpaperDuration {
     Infinite,
 }
 
-impl TryFrom<&str> for WallpaperDuration {
-    type Error = ParseError;
+impl FromStr for WallpaperDuration {
+    type Err = ParseError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "infinite" => Ok(WallpaperDuration::Infinite),
             s => {
@@ -88,7 +89,7 @@ fn parse_duration(input: &str) -> IResult<&str, WallpaperDuration> {
     let (input, _) = opt(parse_comment).parse(input)?;
     map_res(
         take_till1(|c: char| c.is_whitespace()),
-        WallpaperDuration::try_from,
+        WallpaperDuration::from_str,
     )
     .parse(input)
 }
