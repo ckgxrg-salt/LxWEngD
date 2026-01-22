@@ -39,8 +39,9 @@ pub fn open(filename: &Path) -> std::io::Result<File> {
 }
 
 /// Parses a playlist file and generates a list of [`Command`]s.
-pub fn parse(path: &Path, file: &File) -> Vec<Command> {
-    BufReader::new(file)
+/// If the playlist does not any valid [`Command`], return [`None`] instead.
+pub fn parse(path: &Path, file: &File) -> Option<Vec<Command>> {
+    let result: Vec<Command> = BufReader::new(file)
         .lines()
         .enumerate()
         .filter_map(|(line_no, line)| match line {
@@ -65,7 +66,7 @@ pub fn parse(path: &Path, file: &File) -> Vec<Command> {
             }
             Err(err) => {
                 log::warn!(
-                    "{}:{} error: {}, ignoring",
+                    "{}:{} error: {}, skipping",
                     path.to_string_lossy(),
                     line_no + 1,
                     err,
@@ -73,13 +74,19 @@ pub fn parse(path: &Path, file: &File) -> Vec<Command> {
                 None
             }
         })
-        .collect()
+        .collect();
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::command::WallpaperDuration;
+    use crate::utils::command::CmdDuration;
     use std::collections::HashMap;
     use std::io::Read;
     use std::time::Duration;
@@ -103,20 +110,20 @@ mod tests {
         let expected = vec![
             Command::Wallpaper(
                 "1".to_string(),
-                WallpaperDuration::Finite(Duration::from_secs(15 * 60)),
+                CmdDuration::Finite(Duration::from_secs(15 * 60)),
                 HashMap::new(),
             ),
             Command::Wallpaper(
                 "2".to_string(),
-                WallpaperDuration::Finite(Duration::from_secs(60 * 60)),
+                CmdDuration::Finite(Duration::from_secs(60 * 60)),
                 HashMap::new(),
             ),
             Command::Wallpaper(
                 "3".to_string(),
-                WallpaperDuration::Finite(Duration::from_secs(360)),
+                CmdDuration::Finite(Duration::from_secs(360)),
                 HashMap::new(),
             ),
-            Command::Sleep(WallpaperDuration::Finite(Duration::from_secs(5 * 60))),
+            Command::Sleep(CmdDuration::Finite(Duration::from_secs(5 * 60))),
             Command::End,
         ];
         assert_eq!(commands, expected);
