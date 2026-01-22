@@ -1,33 +1,37 @@
-//! Utils for generating command and summoning linux-wallpaperengine.
+//! Utils for generating command and summoning `linux-wallpaperengine`.
 
 use smol::process::{Command, Stdio};
 use std::collections::HashMap;
 
+use crate::backends::Backend;
 use crate::daemon::{CACHE_PATH, CFG};
 
-/// Gets the [`Command`] to start `linux-wallpaperengine`.
-pub fn get_cmd(
-    id: u32,
-    monitor: Option<&str>,
-    properties: &HashMap<String, String>,
-    defaults: &HashMap<String, String>,
-) -> Command {
-    let mut cmd = Command::new(CFG.binary.as_deref().unwrap_or("linux-wallpaperengine"));
-    if let Some(value) = &CFG.assets_path {
-        cmd.arg("--assets-dir").arg(value);
-    }
+struct LxWEng {
+    monitor: Option<String>,
+    defaults: HashMap<String, String>,
+}
 
-    let properties = combine(defaults, properties);
-    handle_properties(&properties, &mut cmd);
+impl Backend for LxWEng {
+    /// Gets the [`Command`] to start `linux-wallpaperengine`.
+    fn get_sys_command(&self, name: &str, properties: &HashMap<String, String>) -> Command {
+        let mut sys_cmd = Command::new(CFG.binary.as_deref().unwrap_or("linux-wallpaperengine"));
+        if let Some(value) = &CFG.assets_path {
+            sys_cmd.arg("--assets-dir").arg(value);
+        }
 
-    if let Some(value) = monitor {
-        cmd.arg("--screen-root").arg(value).arg("--bg");
+        let properties = combine(&self.defaults, properties);
+        map_properties(&properties, &mut sys_cmd);
+
+        if let Some(value) = &self.monitor {
+            sys_cmd.arg("--screen-root").arg(value).arg("--bg");
+        }
+        sys_cmd.arg(name.to_string());
+        sys_cmd
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .current_dir(CACHE_PATH.to_path_buf());
+        sys_cmd
     }
-    cmd.arg(id.to_string());
-    cmd.stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .current_dir(CACHE_PATH.to_path_buf());
-    cmd
 }
 
 /// Combine 2 [`HashMap`]s.
@@ -43,7 +47,7 @@ fn combine<'a>(
     result
 }
 
-fn handle_properties(properties: &HashMap<String, String>, cmd: &mut Command) {
+fn map_properties(properties: &HashMap<String, String>, cmd: &mut Command) {
     for (key, value) in properties {
         match key.as_str() {
             "silent" => {
