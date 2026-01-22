@@ -1,6 +1,12 @@
-//! Each runner holds a playlist file and executes it.
+//! A runner is created with a list of [`Command`]s that it will execute.
 //!
-//! Errors are printed to stderr and the runner will continue to operate.
+//! After init, it awaits on 3 tasks:
+//! - Timer: which wakes it when the designated [`WallpaperDuration`] has elapsed.
+//! - Command: which wakes it when the subprocess exits.
+//! - Message: which wakes it when it's interrupted externally.
+//!
+//! A runner registers it with the daemon.
+//! When it exits, it clears its own entry in the registered runners.
 
 use smol::channel::{Receiver, Sender, TrySendError};
 use std::collections::HashMap;
@@ -9,17 +15,21 @@ use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
 
-use crate::utils::command::Command;
+use crate::backends::{Backend, LxWEng};
+use crate::runner::Action;
+use crate::utils::command::{CmdDuration, Command};
 use crate::utils::playlist;
 
-pub struct Runner {
-    name: String,
+pub struct Runner<T: Backend> {
     index: usize,
-    path: PathBuf,
     commands: Vec<Command>,
-    default: HashMap<String, String>,
 
-    channel: (Sender<Action>, Receiver<Action>),
+    path: PathBuf,
+
+    backend: T,
+
+    tx: Sender<Action>,
+    rx: Receiver<Action>,
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -44,6 +54,7 @@ pub enum ResumeMode {
     /// Apply the state file for the playlist. This is the default behaviour.
     Apply,
 }
+
 impl FromStr for ResumeMode {
     type Err = RunnerError;
     fn from_str(value: &str) -> Result<Self, Self::Err> {
@@ -66,47 +77,26 @@ enum State {
     Execute(Command),
 }
 
-/// An action can be requested for the [`Runner`] to perform.
-pub enum Action {
-    /// Jump to next [`Command`].
-    Next,
-    /// Jump to previous [`Command`].
-    Prev,
-    /// Jump to a certain [`Command`].
-    Goto(usize),
-
-    /// Execute a [`Command`] specified by the user manually.
-    Exec(Command),
-    /// Pause current [`Command`]. bool indicates whether to SIGHUP the child instead
-    /// of terminating.
-    Pause(bool),
-
-    /// Resumes normal operation.
-    Resume,
-
-    /// Terminates the [`Runner`] because of user request.
-    Exit,
-    /// Terminates the [`Runner`] because of an error.
-    Error,
-}
-
-impl Runner {
+// Currently only `linux-wallpaperengine` is supported.
+impl Runner<LxWEng> {
     /// Creates a new Runner that operates the given playlist.
     ///
     /// # Errors
-    /// If the given path is either invalid or cannot be opened, this returns a
-    /// [`RunnerError::InitFailed`].
-    pub fn new(name: String, path: PathBuf) -> Result<Self, RunnerError> {
+    /// If the given playlist cannot be parsed, or is empty, this will return [`RunnerError::InitFailed`].
+    pub fn new(monitor: Option<String>, path: PathBuf) -> Result<Self, RunnerError> {
         match playlist::open(&path) {
-            Ok(file) => Ok(Self {
-                commands: playlist::parse(&path, &file),
-                name,
-                index: 0,
-                path,
-                default: HashMap::new(),
-
-                channel: smol::channel::unbounded(),
-            }),
+            Ok(file) => {
+                let (tx, rx) = smol::channel::unbounded();
+                let commands = playlist::parse(&path, &file).ok_or(RunnerError::InitFailed)?;
+                Ok(Self {
+                    commands,
+                    index: 0,
+                    path,
+                    backend: LxWEng::new(monitor),
+                    tx,
+                    rx,
+                })
+            }
             Err(err) => {
                 log::error!("{err}");
                 Err(RunnerError::InitFailed)
@@ -116,16 +106,13 @@ impl Runner {
 
     /// The main runner task.
     pub async fn run(&mut self) {
-        if self.commands.is_empty() {
-            log::error!("no commands to execute, exiting");
-            return;
-        }
-
         loop {
-            if self.index > self.commands.len() {
+            // By default go back to the beginning when reached the end
+            if self.index >= self.commands.len() {
                 self.index = 0;
             }
             let Some(current_cmd) = self.commands.get(self.index) else {
+                log::error!("Got invalid command");
                 self.index += 1;
                 continue;
             };
@@ -136,7 +123,7 @@ impl Runner {
                     // smol::Timer::after(*duration).await;
                 }
                 Command::Default(properties) => {
-                    properties.clone_into(&mut self.default);
+                    self.backend.update_default_props(properties);
                 }
                 Command::End => {
                     break;
@@ -145,13 +132,11 @@ impl Runner {
         }
     }
 
-    /// Requests the runner to perform an [`RunnerAction`].
-    /// Doing so will interrupt this [`Runner`]'s current task.
+    /// Interrupts the runner to perform an [`Action`].
     ///
     /// # Errors
     /// See [`smol::channel::Sender::try_send`].
-    /// If an error happens here, the [`Runner`] should be terminated forcefully.
-    pub fn request_action(&mut self, action: Action) -> Result<(), TrySendError<Action>> {
-        self.channel.0.try_send(action)
+    pub fn interrupt(&mut self, action: Action) -> Result<(), TrySendError<Action>> {
+        self.tx.try_send(action)
     }
 }

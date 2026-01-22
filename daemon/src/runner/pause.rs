@@ -1,6 +1,6 @@
 //! Handles listening when the runner is in [`State::Paused`].
 
-use crate::runner::{Action, Runner, State};
+use crate::runner::Runner;
 
 impl Runner {
     /// Loop handling actions until a [`RunnerAction::Resume`] is received.

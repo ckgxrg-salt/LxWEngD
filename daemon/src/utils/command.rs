@@ -19,9 +19,9 @@ pub enum Command {
     /// Displays the wallpaper with given id for given duration.
     /// Third argument indicates whether this wallpaper will be displayed forever.
     /// Last arguments are a list of key-value pairs for recognised properties.
-    Wallpaper(String, WallpaperDuration, HashMap<String, String>),
+    Wallpaper(String, CmdDuration, HashMap<String, String>),
     /// Sleeps for given duration.
-    Sleep(WallpaperDuration),
+    Sleep(CmdDuration),
     /// Ends the playlist.
     End,
     /// Sets default properties for all wallpapers.
@@ -29,20 +29,20 @@ pub enum Command {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum WallpaperDuration {
+pub enum CmdDuration {
     Finite(Duration),
     Infinite,
 }
 
-impl FromStr for WallpaperDuration {
+impl FromStr for CmdDuration {
     type Err = ParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "infinite" => Ok(WallpaperDuration::Infinite),
+            "infinite" => Ok(CmdDuration::Infinite),
             s => {
                 let duration = duration_str::parse(s).map_err(|_| ParseError::InvalidArgument)?;
-                Ok(WallpaperDuration::Finite(duration))
+                Ok(CmdDuration::Finite(duration))
             }
         }
     }
@@ -84,12 +84,12 @@ fn parse_properties(input: &str) -> IResult<&str, HashMap<String, String>> {
     prop_parser.parse(input)
 }
 
-fn parse_duration(input: &str) -> IResult<&str, WallpaperDuration> {
+fn parse_duration(input: &str) -> IResult<&str, CmdDuration> {
     // `parse_comment` will eat the input if it succeeds
     let (input, _) = opt(parse_comment).parse(input)?;
     map_res(
         take_till1(|c: char| c.is_whitespace()),
-        WallpaperDuration::from_str,
+        CmdDuration::from_str,
     )
     .parse(input)
 }
@@ -176,21 +176,15 @@ mod tests {
         assert_eq!(parse_properties("k1=v1 k2=v2"), Ok(("", expected.clone())));
         assert_eq!(
             parse_duration("1s"),
-            Ok(("", WallpaperDuration::Finite(Duration::from_secs(1))))
+            Ok(("", CmdDuration::Finite(Duration::from_secs(1))))
         );
-        assert_eq!(
-            parse_duration("infinite"),
-            Ok(("", WallpaperDuration::Infinite))
-        );
+        assert_eq!(parse_duration("infinite"), Ok(("", CmdDuration::Infinite)));
 
         assert_eq!(parse_end("end"), Ok(("", Command::End)));
         // assert_eq!(parse_end("nope"), Ok(("", Command::End)));
         assert_eq!(
             parse_sleep("sleep 1"),
-            Ok((
-                "",
-                Command::Sleep(WallpaperDuration::Finite(Duration::new(1, 0)))
-            ))
+            Ok(("", Command::Sleep(CmdDuration::Finite(Duration::new(1, 0)))))
         );
         assert_eq!(
             parse_default("default k1=v1 k2=v2"),
@@ -206,7 +200,7 @@ mod tests {
         );
         assert_eq!(
             parse_command("sleep infinite # whatever"),
-            Ok((" # whatever", Command::Sleep(WallpaperDuration::Infinite)))
+            Ok((" # whatever", Command::Sleep(CmdDuration::Infinite)))
         );
     }
 
@@ -215,9 +209,7 @@ mod tests {
         let cmd = "sleep 165";
         assert_eq!(
             parse(cmd),
-            Ok(Command::Sleep(WallpaperDuration::Finite(Duration::new(
-                165, 0
-            ))))
+            Ok(Command::Sleep(CmdDuration::Finite(Duration::new(165, 0))))
         );
         let cmd = "end";
         assert_eq!(parse(cmd), Ok(Command::End));
@@ -226,7 +218,7 @@ mod tests {
             parse(cmd),
             Ok(Command::Wallpaper(
                 "114514".to_string(),
-                WallpaperDuration::Finite(Duration::new(5 * 60 * 60, 0)),
+                CmdDuration::Finite(Duration::new(5 * 60 * 60, 0)),
                 HashMap::new()
             ))
         );
@@ -252,7 +244,7 @@ mod tests {
             parse(cmd),
             Ok(Command::Wallpaper(
                 "114514".to_string(),
-                WallpaperDuration::Finite(Duration::from_secs(15 * 60)),
+                CmdDuration::Finite(Duration::from_secs(15 * 60)),
                 expected
             ))
         );
@@ -263,7 +255,7 @@ mod tests {
             parse(cmd),
             Ok(Command::Wallpaper(
                 "114514".to_string(),
-                WallpaperDuration::Infinite,
+                CmdDuration::Infinite,
                 expected
             ))
         );

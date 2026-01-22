@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use crate::backends::Backend;
 use crate::daemon::{CACHE_PATH, CFG};
 
-struct LxWEng {
+pub struct LxWEng {
     monitor: Option<String>,
-    defaults: HashMap<String, String>,
+    default_props: HashMap<String, String>,
 }
 
 impl Backend for LxWEng {
@@ -19,7 +19,7 @@ impl Backend for LxWEng {
             sys_cmd.arg("--assets-dir").arg(value);
         }
 
-        let properties = combine(&self.defaults, properties);
+        let properties = combine(&self.default_props, properties);
         map_properties(&properties, &mut sys_cmd);
 
         if let Some(value) = &self.monitor {
@@ -31,6 +31,20 @@ impl Backend for LxWEng {
             .stderr(Stdio::null())
             .current_dir(CACHE_PATH.to_path_buf());
         sys_cmd
+    }
+}
+
+impl LxWEng {
+    pub fn new(monitor: Option<String>) -> Self {
+        Self {
+            monitor,
+            default_props: HashMap::new(),
+        }
+    }
+
+    /// Updates the held default properties.
+    pub fn update_default_props(&mut self, defaults: &HashMap<String, String>) {
+        defaults.clone_into(&mut self.default_props);
     }
 }
 
