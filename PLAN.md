@@ -4,7 +4,7 @@ lxwengctl playlist --resume=[ignore(false)|delete|true]
 lxwengctl playlist --monitor ...
 
 lxwengctl pause
-lxwengctl pause --keep # Do not terminate linux-wallpaperengine
+lxwengctl pause --clear # Terminate linux-wallpaperengine
 
 lxwengctl play
 lxwengctl toggle
@@ -12,6 +12,8 @@ lxwengctl toggle
 lxwengctl stop # Unloads current playlist
 lxwengctl stop --no-resume
 lxwengctl status
+
+lxwengctl exec "<some command>"
 
 lxwengd # Looks for default
 lxwengd --standby # Do nothing until `lxwengctl playlist`

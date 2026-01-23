@@ -14,8 +14,7 @@ pub enum Action {
     /// Execute a [`Command`] specified by the user manually.
     Exec(Command),
 
-    /// Pause current [`Command`]. bool indicates whether to SIGHUP the child instead
-    /// of terminating.
+    /// Pause current [`Command`]. bool indicates whether to terminate the child.
     Pause(bool),
     /// Resumes normal operation.
     Resume,

@@ -32,8 +32,8 @@ pub enum DaemonCmd {
     Unload { no_save: bool, id: Option<String> },
 
     /// Pauses the given runner, the bool argument indicates whether `linux-wallpaperengine` should
-    /// be SIGHUP-ed or terminated.
-    Pause { hold: bool, id: Option<String> },
+    /// be terminated or kept.
+    Pause { clear: bool, id: Option<String> },
     /// Resumes the given runner.
     Play { id: Option<String> },
     /// Toggles play/pause of the given runner.
@@ -127,7 +127,7 @@ fn parse_pause(input: &str) -> IResult<&str, DaemonCmd> {
     map(
         opt(take_till1(|c: char| c.is_whitespace())),
         |id: Option<&str>| DaemonCmd::Pause {
-            hold,
+            clear: hold,
             id: id.map(String::from),
         },
     )
