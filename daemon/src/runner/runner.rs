@@ -5,7 +5,7 @@
 //! - Command: which wakes it when the subprocess exits.
 //! - Message: which wakes it when it's interrupted externally.
 //!
-//! A runner registers it with the daemon.
+//! A runner registers itself with the daemon.
 //! When it exits, it clears its own entry in the registered runners.
 
 use std::path::PathBuf;
@@ -51,22 +51,26 @@ impl Runner<LxWEng> {
             if self.index >= self.commands.len() {
                 self.index = 0;
             }
-            let Some(current_cmd) = self.commands.get(self.index) else {
+            // TODO: Possibly eliminate the Clone by Mutex?
+            let Some(current_cmd) = self.commands.get(self.index).cloned() else {
                 log::error!("Got invalid command");
                 self.index += 1;
                 continue;
             };
             self.index += 1;
             match current_cmd {
-                Command::Wallpaper(name, CmdDuration::Finite(duration), properties) => {
-                    self.wallpaper(name, *duration, properties).await
-                }
+                Command::Wallpaper(name, duration, properties) => match duration {
+                    CmdDuration::Finite(duration) => {
+                        self.wallpaper(&name, duration, &properties).await
+                    }
+                    CmdDuration::Infinite => self.wallpaper_infinite(&name, &properties).await,
+                },
                 Command::Sleep(duration) => match duration {
-                    CmdDuration::Finite(duration) => self.sleep(*duration).await,
+                    CmdDuration::Finite(duration) => self.sleep(duration).await,
                     CmdDuration::Infinite => self.wait_action().await,
                 },
                 Command::Default(properties) => {
-                    self.backend.update_default_props(properties);
+                    self.backend.update_default_props(&properties);
                     ExecResult::Done
                 }
                 Command::End => {
@@ -74,9 +78,5 @@ impl Runner<LxWEng> {
                 }
             };
         }
-    }
-
-    async fn paused(&mut self) {
-        self.wait_action().await;
     }
 }

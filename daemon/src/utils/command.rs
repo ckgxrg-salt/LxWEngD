@@ -14,7 +14,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use thiserror::Error;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     /// Displays the wallpaper with given id for given duration.
     /// Third argument indicates whether this wallpaper will be displayed forever.
@@ -28,7 +28,7 @@ pub enum Command {
     Default(HashMap<String, String>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CmdDuration {
     Finite(Duration),
     Infinite,

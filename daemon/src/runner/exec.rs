@@ -22,7 +22,7 @@ pub(super) enum ExecResult {
 
 impl<T: Backend> Runner<T> {
     /// Sleeps indefinitely and wait for an [`Action`].
-    pub(super) async fn wait_action(&self) -> ExecResult {
+    pub(super) async fn wait_action(&mut self) -> ExecResult {
         if let Ok(action) = self.rx.recv().await {
             ExecResult::Interrupted(action)
         } else {
@@ -31,7 +31,7 @@ impl<T: Backend> Runner<T> {
     }
 
     /// Sleeps for a given duration or an [`Action`].
-    pub(super) async fn sleep(&self, duration: Duration) -> ExecResult {
+    pub(super) async fn sleep(&mut self, duration: Duration) -> ExecResult {
         smol::future::race(
             async {
                 smol::Timer::after(duration).await;
@@ -40,6 +40,15 @@ impl<T: Backend> Runner<T> {
             self.wait_action(),
         )
         .await
+    }
+
+    /// Summons a wallpaper indefinitely.
+    pub(super) async fn wallpaper_infinite(
+        &mut self,
+        name: &str,
+        properties: &HashMap<String, String>,
+    ) -> ExecResult {
+        todo!()
     }
 
     /// Summons a wallpaper for a given duration or an [`Action`].
