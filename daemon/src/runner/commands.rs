@@ -1,6 +1,6 @@
-//! Defines commands the daemon can identify.
+//! Defines commands a Runner can execute.
 //!
-//! Also provides a function to parse strings to commands.
+//! This module do the parsing job.
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till1};

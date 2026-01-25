@@ -1,7 +1,10 @@
 //! An action can be requested for the [`Runner`] to perform.
+//!
 //! These actions will interrupt the the current task.
+//! When the runner is in paused state,
+//! any of these actions will put it back to normal mode.
 
-use crate::utils::command::Command;
+use crate::runner::Command;
 
 pub enum Action {
     /// Jump to next [`Command`].
@@ -16,8 +19,6 @@ pub enum Action {
 
     /// Pause current [`Command`]. bool indicates whether to terminate the child.
     Pause(bool),
-    /// Resumes normal operation.
-    Resume,
 
     /// Terminates the [`Runner`] because of user request.
     Exit,

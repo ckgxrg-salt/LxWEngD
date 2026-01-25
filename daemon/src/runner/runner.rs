@@ -1,20 +1,28 @@
 //! A runner is created with a list of [`Command`]s that it will execute.
 //!
-//! After init, it awaits on 3 tasks:
-//! - Timer: which wakes it when the designated [`WallpaperDuration`] has elapsed.
-//! - Command: which wakes it when the subprocess exits.
-//! - Message: which wakes it when it's interrupted externally.
-//!
 //! A runner registers itself with the daemon.
+//!
+//! Working cycle of a Runner:
+//! 1. Check and fetch next [`Command`].
+//! 2. Directly execute any oneshot [`Command`] and continue to next loop.
+//! 3. [`Execution`] of long-running [`Command`]s.
+//! 4. Handle the [`ExecResult`] reported by the [`Execution`] future.
+//!
 //! When it exits, it clears its own entry in the registered runners.
 
 use std::path::PathBuf;
 
 use crate::backends::LxWEng;
-use crate::runner::exec::ExecResult;
-use crate::runner::{Runner, RunnerError, State};
-use crate::utils::command::{CmdDuration, Command};
+use crate::runner::exec::{ExecResult, Execution};
+use crate::runner::{Action, Command, Runner, RunnerError, State};
 use crate::utils::playlist;
+
+/// A flag to break the outer loop.
+enum LoopFlag {
+    Break,
+    Continue,
+    Nothing,
+}
 
 /// Currently only `linux-wallpaperengine` is supported.
 impl Runner<LxWEng> {
@@ -30,7 +38,7 @@ impl Runner<LxWEng> {
                 Ok(Self {
                     commands,
                     index: 0,
-                    state: State::Running,
+                    state: State::Ready,
                     path,
                     backend: LxWEng::new(monitor),
                     tx,
@@ -57,26 +65,54 @@ impl Runner<LxWEng> {
                 self.index += 1;
                 continue;
             };
-            self.index += 1;
             match current_cmd {
-                Command::Wallpaper(name, duration, properties) => match duration {
-                    CmdDuration::Finite(duration) => {
-                        self.wallpaper(&name, duration, &properties).await
-                    }
-                    CmdDuration::Infinite => self.wallpaper_infinite(&name, &properties).await,
+                Command::Default(props) => self.backend.update_default_props(&props),
+                Command::End => break,
+                cmd => match self.exec_async(cmd).await {
+                    LoopFlag::Nothing => (),
+                    LoopFlag::Break => break,
+                    LoopFlag::Continue => continue,
                 },
-                Command::Sleep(duration) => match duration {
-                    CmdDuration::Finite(duration) => self.sleep(duration).await,
-                    CmdDuration::Infinite => self.wait_action().await,
-                },
-                Command::Default(properties) => {
-                    self.backend.update_default_props(&properties);
-                    ExecResult::Done
-                }
-                Command::End => {
-                    break;
-                }
-            };
+            }
+            self.index += 1;
         }
+        self.state = State::Exited;
+    }
+
+    /// Handles long-running tasks
+    async fn exec_async(&mut self, cmd: Command) -> LoopFlag {
+        let mut exec = Execution::begin(cmd, &self.backend, self.rx.clone());
+        self.state = State::Running(exec);
+        let result = exec.result().await;
+        let flag = match result {
+            ExecResult::Elapsed => LoopFlag::Nothing,
+            ExecResult::Error => LoopFlag::Nothing,
+            ExecResult::Interrupted(action) => match action {
+                Action::Next => LoopFlag::Nothing,
+                Action::Prev => {
+                    self.index -= 1;
+                    LoopFlag::Continue
+                }
+                Action::Goto(i) => {
+                    self.index = i;
+                    LoopFlag::Continue
+                }
+                Action::Exec(cmd) => {
+                    exec.cleanup();
+                    return self.exec_async(cmd).await;
+                }
+                Action::Pause(clear) => {
+                    if clear {
+                        exec.cleanup();
+                    }
+                    self.state = State::Paused(exec.remaining());
+                    self.rx.recv().await;
+                    return LoopFlag::Nothing;
+                }
+                Action::Exit => LoopFlag::Break,
+            },
+        };
+        exec.cleanup();
+        flag
     }
 }

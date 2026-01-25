@@ -1,8 +1,10 @@
-mod action;
+mod actions;
+mod commands;
 mod exec;
 mod runner;
 
-pub use action::Action;
+pub use actions::Action;
+pub use commands::{CmdDuration, Command};
 
 use smol::channel::{Receiver, Sender, TrySendError};
 use std::path::PathBuf;
@@ -11,7 +13,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::backends::Backend;
-use crate::utils::command::Command;
+use exec::{ExecInfo, Execution};
 
 /// Data structure of a runner.
 pub struct Runner<T: Backend> {
@@ -45,6 +47,8 @@ pub enum RunnerError {
     CannotSpawn,
     #[error("`linux-wallpaperengine` unexpectedly exited")]
     EngineDied,
+    #[error("Failed to cleanup")]
+    CleanupFail,
 }
 
 /// How should a runner treat state files on startup.
@@ -75,10 +79,9 @@ impl FromStr for ResumeMode {
 
 /// Runner's state
 enum State {
-    /// Normal state
-    Running,
-    /// Stores the remaining [`Duration`] of the last [`Command`].
-    Paused(Duration),
-    /// Received an [`Action::Exec`] and is executing that [`Command`].
-    Execute(Command),
+    /// This includes oneshot commands
+    Ready,
+    Running(ExecInfo),
+    Paused(Option<Duration>),
+    Exited,
 }
