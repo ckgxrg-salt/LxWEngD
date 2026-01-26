@@ -91,7 +91,7 @@ impl Execution {
         }
     }
 
-    pub async fn info(&self) -> ExecInfo {
+    pub fn info(&self) -> ExecInfo {
         self.info.clone()
     }
 

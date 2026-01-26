@@ -10,6 +10,7 @@
 //!
 //! When it exits, it clears its own entry in the registered runners.
 
+use async_recursion::async_recursion;
 use std::path::PathBuf;
 
 use crate::backends::LxWEng;
@@ -80,9 +81,10 @@ impl Runner<LxWEng> {
     }
 
     /// Handles long-running tasks
+    #[async_recursion]
     async fn exec_async(&mut self, cmd: Command) -> LoopFlag {
         let mut exec = Execution::begin(cmd, &self.backend, self.rx.clone());
-        self.state = State::Running(exec);
+        self.state = State::Running(exec.info());
         let result = exec.result().await;
         let flag = match result {
             ExecResult::Elapsed => LoopFlag::Nothing,

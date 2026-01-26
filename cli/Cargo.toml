@@ -11,4 +11,3 @@ pedantic = "warn"
 
 [dependencies]
 clap.workspace = true
-display-info = "0.5.4"

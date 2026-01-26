@@ -7,19 +7,16 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-recursion.workspace = true
 clap.workspace = true
-duration-str = "0.13.0"
-fern = "0.7.1"
-log = "0.4.26"
-nix = { version = "0.30.1", features = ["signal"] }
-nom = "8.0.0"
-smol = "2.0.2"
-thiserror = "2.0.14"
-
-[dependencies.chrono]
-version = "0.4.40"
-default-features = false
-features = [ "std", "clock" ]
+duration-str.workspace = true
+fern.workspace = true
+log.workspace = true
+nix.workspace = true
+nom.workspace = true
+smol.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
-env_logger = "0.11.6"
+env_logger.workspace = true
