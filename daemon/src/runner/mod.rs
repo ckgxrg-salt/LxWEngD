@@ -1,7 +1,7 @@
 mod actions;
 mod commands;
 mod exec;
-mod runner;
+mod imp;
 
 pub use actions::Action;
 pub use commands::{CmdDuration, Command};
@@ -13,7 +13,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::backends::Backend;
-use exec::{ExecInfo, Execution};
+use exec::ExecInfo;
 
 /// Data structure of a runner.
 pub struct Runner<T: Backend> {

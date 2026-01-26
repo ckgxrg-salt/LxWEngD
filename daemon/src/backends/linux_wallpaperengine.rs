@@ -25,7 +25,7 @@ impl Backend for LxWEng {
         if let Some(value) = &self.monitor {
             sys_cmd.arg("--screen-root").arg(value).arg("--bg");
         }
-        sys_cmd.arg(name.to_string());
+        sys_cmd.arg(name);
         sys_cmd
             .stdout(Stdio::null())
             .stderr(Stdio::null())

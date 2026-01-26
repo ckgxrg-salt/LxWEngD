@@ -1,14 +1,10 @@
 //! A runner is created with a list of [`Command`]s that it will execute.
 //!
-//! A runner registers itself with the daemon.
-//!
 //! Working cycle of a Runner:
 //! 1. Check and fetch next [`Command`].
 //! 2. Directly execute any oneshot [`Command`] and continue to next loop.
 //! 3. [`Execution`] of long-running [`Command`]s.
 //! 4. Handle the [`ExecResult`] reported by the [`Execution`] future.
-//!
-//! When it exits, it clears its own entry in the registered runners.
 
 use async_recursion::async_recursion;
 use std::path::PathBuf;

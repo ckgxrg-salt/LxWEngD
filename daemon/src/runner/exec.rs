@@ -95,8 +95,58 @@ impl Execution {
         self.info.clone()
     }
 
-    pub async fn result(&self) -> ExecResult {
-        todo!()
+    /// Sleeps indefinitely and wait for an [`Action`].
+    async fn wait_action(rx: &Receiver<Action>) -> ExecResult {
+        match rx.recv().await {
+            Ok(action) => ExecResult::Interrupted(action),
+            Err(_) => ExecResult::Error,
+        }
+    }
+
+    pub async fn result(&mut self) -> ExecResult {
+        match &mut self.kind {
+            ExecType::Supervise { child } => {
+                if let Some(duration) = self.info.duration {
+                    smol::future::race(
+                        smol::future::race(
+                            async {
+                                smol::Timer::after(duration).await;
+                                ExecResult::Elapsed
+                            },
+                            async {
+                                let _ = child.status().await;
+                                ExecResult::Error
+                            },
+                        ),
+                        Self::wait_action(&self.interrupt_rx),
+                    )
+                    .await
+                } else {
+                    smol::future::race(
+                        async {
+                            let _ = child.status().await;
+                            ExecResult::Error
+                        },
+                        Self::wait_action(&self.interrupt_rx),
+                    )
+                    .await
+                }
+            }
+            ExecType::Sleep => {
+                if let Some(duration) = self.info.duration {
+                    smol::future::race(
+                        async {
+                            smol::Timer::after(duration).await;
+                            ExecResult::Elapsed
+                        },
+                        Self::wait_action(&self.interrupt_rx),
+                    )
+                    .await
+                } else {
+                    Self::wait_action(&self.interrupt_rx).await
+                }
+            }
+        }
     }
 
     pub fn remaining(&self) -> Option<Duration> {
@@ -112,7 +162,11 @@ impl Execution {
         match &mut self.kind {
             ExecType::Supervise { child } => {
                 // If the child is still alive. We send a SIGTERM instead of a SIGKILL.
-                if let None = child.try_status().map_err(|_| RunnerError::CleanupFail)? {
+                if child
+                    .try_status()
+                    .map_err(|_| RunnerError::CleanupFail)?
+                    .is_none()
+                {
                     let pid =
                         Pid::from_raw(child.id().try_into().expect("PID should not be that large"));
 
@@ -127,71 +181,5 @@ impl Execution {
             }
             ExecType::Sleep => Ok(()),
         }
-    }
-}
-
-impl<T: Backend> Runner<T> {
-    /// Sleeps indefinitely and wait for an [`Action`].
-    pub(super) async fn wait_action(&mut self) -> ExecResult {
-        if let Ok(action) = self.rx.recv().await {
-            ExecResult::Interrupted(action)
-        } else {
-            ExecResult::Error
-        }
-    }
-
-    /// Sleeps for a given duration or an [`Action`].
-    pub(super) async fn sleep(&mut self, duration: Duration) -> ExecResult {
-        let start = Instant::now();
-        smol::future::race(
-            async {
-                smol::Timer::after(duration).await;
-                ExecResult::Elapsed
-            },
-            async {
-                match self.rx.recv().await {
-                    Ok(action) => ExecResult::Interrupted(action),
-                    Err(_) => ExecResult::Error,
-                }
-            },
-        )
-        .await
-    }
-
-    /// Summons a wallpaper indefinitely.
-    pub(super) async fn wallpaper_infinite(
-        &mut self,
-        name: &str,
-        properties: &HashMap<String, String>,
-    ) -> ExecResult {
-        todo!()
-    }
-
-    /// Summons a wallpaper for a given duration or an [`Action`].
-    pub(super) async fn wallpaper(
-        &mut self,
-        name: &str,
-        duration: Duration,
-        properties: &HashMap<String, String>,
-    ) -> ExecResult {
-        let mut sys_cmd = self.backend.get_sys_command(name, properties);
-        let mut child = sys_cmd.spawn().unwrap();
-        let pid = child.id();
-        let result = smol::future::race(
-            smol::future::race(
-                async {
-                    smol::Timer::after(duration).await;
-                    ExecResult::Elapsed
-                },
-                async {
-                    child.status().await;
-                    ExecResult::Error
-                },
-            ),
-            self.wait_action(),
-        )
-        .await;
-
-        result
     }
 }

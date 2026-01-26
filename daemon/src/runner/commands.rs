@@ -155,10 +155,10 @@ pub fn parse(input: &str) -> Result<Command, ParseError> {
     }
 }
 
-impl TryFrom<&str> for Command {
-    type Error = ParseError;
+impl FromStr for Command {
+    type Err = ParseError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         parse(value)
     }
 }

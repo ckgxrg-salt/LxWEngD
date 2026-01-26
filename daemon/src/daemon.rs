@@ -11,8 +11,9 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
+use crate::backends::Backend;
 use crate::runner::Runner;
-use crate::utils::socket::{Socket, SocketError};
+use crate::utils::socket::Socket;
 
 pub static CFG: LazyLock<Config> = LazyLock::new(parse);
 pub static SEARCH_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -127,7 +128,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
 ///
 /// # Errors
 /// Fatal errors that will cause the program to exit will be returned here.
-pub async fn start() -> Result<(), Box<dyn Error>> {
+pub async fn start<T: Backend>() -> Result<(), Box<dyn Error>> {
     // If cache directory does not exist, create it
     if !CACHE_PATH.is_dir() {
         std::fs::create_dir(CACHE_PATH.as_path()).inspect_err(|err| {
@@ -138,7 +139,7 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
 
     let socket =
         Socket::new().inspect_err(|err| eprintln!("failed to create unix socket: {err}"))?;
-    let runners: HashMap<String, Runner> = HashMap::new();
+    let runners: HashMap<String, Runner<T>> = HashMap::new();
 
     socket.listen().await;
 

@@ -3,9 +3,10 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
-use super::command::{Command, parse as parse_cmd};
 use crate::daemon::SEARCH_PATH;
+use crate::runner::Command;
 
 /// Searches the given playlist in the given search path.
 ///
@@ -50,7 +51,7 @@ pub fn parse(path: &Path, file: &File) -> Option<Vec<Command>> {
                 if trimmed.is_empty() || trimmed.starts_with('#') {
                     None
                 } else {
-                    match parse_cmd(trimmed) {
+                    match Command::from_str(trimmed) {
                         Ok(cmd) => Some(cmd),
                         Err(err) => {
                             log::warn!(
@@ -86,7 +87,7 @@ pub fn parse(path: &Path, file: &File) -> Option<Vec<Command>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::command::CmdDuration;
+    use crate::runner::CmdDuration;
     use std::collections::HashMap;
     use std::io::Read;
     use std::time::Duration;
@@ -126,6 +127,6 @@ mod tests {
             Command::Sleep(CmdDuration::Finite(Duration::from_secs(5 * 60))),
             Command::End,
         ];
-        assert_eq!(commands, expected);
+        assert_eq!(commands, Some(expected));
     }
 }
