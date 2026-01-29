@@ -15,6 +15,7 @@ use std::sync::{Arc, LazyLock};
 use thiserror::Error;
 
 use crate::cli::{Config, configure};
+use crate::runner::NOMONITOR_INDICATOR;
 use crate::runner::{Action, Runner, RunnerHandle};
 use crate::utils::ipc::IPCCmd;
 
@@ -123,6 +124,25 @@ impl LxWEngd {
     /// Fatal errors that will cause the program to exit will be returned here.
     #[allow(clippy::map_entry)]
     pub fn start(&mut self) {
+        if !CFG.standby {
+            let monitor = CFG
+                .default_monitor
+                .clone()
+                .unwrap_or(NOMONITOR_INDICATOR.to_string());
+            match Runner::new(monitor.clone(), CFG.default_playlist.clone()) {
+                Ok((mut runner, handle)) => {
+                    // One runner runs on one monitor
+                    self.runners.insert(monitor, handle);
+                    smol::spawn(async move {
+                        runner.run().await;
+                    })
+                    .detach();
+                }
+                Err(err) => {
+                    log::error!("{err}");
+                }
+            }
+        }
         loop {
             if let Ok((mut conn, _)) = self.socket.accept() {
                 let mut content = String::new();

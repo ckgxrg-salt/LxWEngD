@@ -30,6 +30,8 @@
           rustfmt
           deadnix
           nixfmt
+
+          linux-wallpaperengine
         ];
       };
     };

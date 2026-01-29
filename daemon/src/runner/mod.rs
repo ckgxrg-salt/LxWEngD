@@ -19,7 +19,7 @@ use crate::backends::Backend;
 use exec::ExecInfo;
 
 /// The special monitor name to indicate this runner has no associated monitor.
-const NOMONITOR_INDICATOR: &str = "NOMONITOR";
+pub const NOMONITOR_INDICATOR: &str = "NOMONITOR";
 
 pub struct RunnerHandle {
     index: usize,
@@ -147,13 +147,7 @@ impl Display for State {
                     &format!("Running - started at {:?}", info.start)
                 }
             }
-            State::Paused(duration) => {
-                if let Some(duration) = duration {
-                    &format!("Paused - expected to take {:?}", duration)
-                } else {
-                    &"Paused".to_string()
-                }
-            }
+            State::Paused(_) => "Paused",
             State::Exited => "Exited",
         };
         write!(f, "{string}")

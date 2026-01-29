@@ -18,6 +18,14 @@ struct Cli {
     playlist: Option<PathBuf>,
 
     #[arg(
+        short = 'm',
+        long = "monitor",
+        value_name = "NAME",
+        help = "Monitor to be used for the default playlist."
+    )]
+    monitor: Option<String>,
+
+    #[arg(
         short = 'b',
         long = "binary",
         value_name = "PATH",
@@ -42,6 +50,7 @@ struct Cli {
 
 pub struct Config {
     pub default_playlist: PathBuf,
+    pub default_monitor: Option<String>,
     pub assets_path: Option<PathBuf>,
     pub binary: Option<String>,
     pub standby: bool,
@@ -57,6 +66,7 @@ pub fn configure() -> Config {
     };
     Config {
         default_playlist,
+        default_monitor: parsed.monitor,
         assets_path: parsed.assets_path,
         binary: parsed.binary,
         standby: parsed.standby,
