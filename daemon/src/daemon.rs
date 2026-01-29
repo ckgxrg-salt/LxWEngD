@@ -31,7 +31,14 @@ pub static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(find_cache_path);
 pub struct LxWEngd {
     runners: HashMap<String, Arc<Mutex<RunnerHandle>>>,
     socket: UnixListener,
-    socket_path: PathBuf,
+}
+
+impl Drop for LxWEngd {
+    fn drop(&mut self) {
+        let addr = self.socket.local_addr().unwrap();
+        let path = addr.as_pathname().unwrap();
+        std::fs::remove_file(path).expect("Failed to unbind socket")
+    }
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -91,7 +98,7 @@ impl LxWEngd {
     pub fn init() -> Result<Self, DaemonError> {
         let mut socket_path = std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".to_string());
         socket_path.push_str("/lxwengd.sock");
-        let socket = UnixListener::bind(&socket_path).map_err(|_| DaemonError::InitSocket)?;
+        let socket = UnixListener::bind(socket_path).map_err(|_| DaemonError::InitSocket)?;
 
         setup_logger().map_err(|_| DaemonError::InitLogger)?;
 
@@ -106,7 +113,6 @@ impl LxWEngd {
         Ok(Self {
             runners: HashMap::new(),
             socket,
-            socket_path: PathBuf::from(socket_path),
         })
     }
 
@@ -116,8 +122,7 @@ impl LxWEngd {
     /// Fatal errors that will cause the program to exit will be returned here.
     pub fn start(&mut self) {
         loop {
-            let mut incoming = self.socket.incoming();
-            if let Some(Ok(mut conn)) = incoming.next() {
+            if let Ok((mut conn, _)) = self.socket.accept() {
                 let mut content = String::new();
                 let _ = conn.read_to_string(&mut content);
                 let cmd = IPCCmd::from_str(&content);
@@ -203,7 +208,6 @@ impl LxWEngd {
                 }
             }
         }
-        std::fs::remove_file(&self.socket_path).expect("Failed to remove socket");
     }
 
     /// When [`Runner`]s exit, they set their state to [`State::Exited`].
