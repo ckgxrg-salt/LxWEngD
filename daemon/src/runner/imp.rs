@@ -102,16 +102,16 @@ impl Runner<LxWEng> {
                     LoopFlag::Continue => continue,
                 },
             }
-            self.next();
+            self.next().await;
         }
-        self.update_state(State::Exited);
+        self.update_state(State::Exited).await;
     }
 
     /// Handles long-running tasks
     #[async_recursion]
     async fn exec_async(&mut self, cmd: Command) -> LoopFlag {
         let mut exec = Execution::begin(cmd, &self.backend, self.rx.clone());
-        self.update_state(State::Running(exec.info()));
+        self.update_state(State::Running(exec.info())).await;
         let result = exec.result().await;
         let flag = match result {
             ExecResult::Elapsed => LoopFlag::Nothing,
@@ -119,29 +119,29 @@ impl Runner<LxWEng> {
             ExecResult::Interrupted(action) => match action {
                 Action::Next => LoopFlag::Nothing,
                 Action::Prev => {
-                    self.prev();
+                    self.prev().await;
                     LoopFlag::Continue
                 }
                 Action::Goto(i) => {
-                    self.goto(i);
+                    self.goto(i).await;
                     LoopFlag::Continue
                 }
                 Action::Exec(cmd) => {
-                    exec.cleanup();
+                    let _ = exec.cleanup();
                     return self.exec_async(cmd).await;
                 }
                 Action::Pause(clear) => {
                     if clear {
-                        exec.cleanup();
+                        let _ = exec.cleanup();
                     }
-                    self.update_state(State::Paused(exec.remaining()));
-                    self.rx.recv().await;
+                    self.update_state(State::Paused(exec.remaining())).await;
+                    let _ = self.rx.recv().await;
                     return LoopFlag::Nothing;
                 }
                 Action::Exit => LoopFlag::Break,
             },
         };
-        exec.cleanup();
+        let _ = exec.cleanup();
         flag
     }
 }

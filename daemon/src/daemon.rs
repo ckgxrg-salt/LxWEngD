@@ -7,7 +7,7 @@
 use smol::lock::Mutex;
 use std::collections::HashMap;
 use std::env;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -98,6 +98,7 @@ impl LxWEngd {
     pub fn init() -> Result<Self, DaemonError> {
         let mut socket_path = std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".to_string());
         socket_path.push_str("/lxwengd.sock");
+        let _ = std::fs::remove_file(&socket_path);
         let socket = UnixListener::bind(socket_path).map_err(|_| DaemonError::InitSocket)?;
 
         setup_logger().map_err(|_| DaemonError::InitLogger)?;
@@ -120,11 +121,12 @@ impl LxWEngd {
     ///
     /// # Errors
     /// Fatal errors that will cause the program to exit will be returned here.
+    #[allow(clippy::map_entry)]
     pub fn start(&mut self) {
         loop {
             if let Ok((mut conn, _)) = self.socket.accept() {
                 let mut content = String::new();
-                let _ = conn.read_to_string(&mut content);
+                let _ = BufReader::new(&conn).read_line(&mut content);
                 let cmd = IPCCmd::from_str(&content);
                 match cmd {
                     Ok(IPCCmd::Load {
@@ -144,13 +146,14 @@ impl LxWEngd {
                                     // One runner runs on one monitor
                                     self.runners.insert(monitor, handle);
                                     smol::spawn(async move {
-                                        runner.run();
-                                    });
-                                    conn.write_all(b"OK");
+                                        runner.run().await;
+                                    })
+                                    .detach();
+                                    let _ = conn.write_all(b"OK");
                                 }
                                 Err(err) => {
                                     log::error!("{err}");
-                                    conn.write_all(&err.to_string().into_bytes());
+                                    let _ = conn.write_all(&err.to_string().into_bytes());
                                 }
                             }
                         }
@@ -161,10 +164,11 @@ impl LxWEngd {
                         no_save: _,
                         monitor,
                     }) => {
-                        if let Some(handle) = self.runners.remove(&monitor) {
-                            let _ = handle.lock_blocking().interrupt(Action::Exit);
+                        Self::try_cleanup(&mut self.runners);
+                        if self.forward_action(&monitor, Action::Exit).is_ok() {
+                            let _ = conn.write_all(b"OK");
                         } else {
-                            log::error!("No such runner")
+                            let _ = conn.write_all(b"No such runner");
                         }
                     }
 

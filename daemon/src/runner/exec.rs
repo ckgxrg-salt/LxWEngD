@@ -48,6 +48,7 @@ impl Execution {
         match cmd {
             Command::Wallpaper(name, duration, properties) => {
                 let mut sys_cmd = backend.get_sys_command(&name, &properties);
+                // TODO: Error handling
                 let child = sys_cmd.spawn().unwrap();
                 match duration {
                     CmdDuration::Finite(duration) => Self {
@@ -169,11 +170,8 @@ impl Execution {
                     let pid =
                         Pid::from_raw(child.id().try_into().expect("PID should not be that large"));
 
-                    kill(
-                        Pid::from_raw(pid.into()),
-                        Signal::SIGTERM,
-                    )
-                    .map_err(|_| RunnerError::CleanupFail)
+                    kill(Pid::from_raw(pid.into()), Signal::SIGTERM)
+                        .map_err(|_| RunnerError::CleanupFail)
                 } else {
                     Ok(())
                 }

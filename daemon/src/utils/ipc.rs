@@ -154,7 +154,7 @@ pub fn parse(input: &str) -> Result<IPCCmd, ParseError> {
         Ok((_, cmd)) => Ok(cmd),
         Err(nom::error::Error {
             input: _,
-            code: nom::error::ErrorKind::TakeTill1,
+            code: nom::error::ErrorKind::Tag,
         }) => Err(ParseError::InvalidArgument),
         Err(nom::error::Error {
             input: _,
@@ -177,7 +177,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_cmd() {
+    fn parsing_cmd() {
         let cmd = "load /tmp/test.playlist eDP-1 false ignoredel";
         assert_eq!(
             parse_cmd(cmd),
@@ -219,33 +219,14 @@ mod tests {
         assert_eq!(parse_cmd(cmd), Ok(("", IPCCmd::Status)));
     }
 
-    // #[test]
-    // fn receiving_command() {
-    //     let socket = Socket {
-    //         listener: smol::net::unix::UnixListener::bind("/tmp/lxwengd-test.sock").unwrap(),
-    //     };
-    //
-    //     let _quit = smol::spawn(async {
-    //         let mut conn = smol::net::unix::UnixStream::connect("/tmp/lxwengd-test.sock")
-    //             .await
-    //             .unwrap();
-    //         conn.write_all(b"quit").await.unwrap();
-    //     });
-    //
-    //     smol::block_on(async {
-    //         smol::future::race(
-    //             async {
-    //                 let result = socket.listen().await;
-    //                 std::fs::remove_file("/tmp/lxwengd-test.sock").unwrap();
-    //                 assert_eq!(result, Ok(("", DaemonCmd::Quit)));
-    //             },
-    //             async {
-    //                 smol::Timer::after(Duration::from_secs(1)).await;
-    //                 std::fs::remove_file("/tmp/lxwengd-test.sock").unwrap();
-    //                 panic!("timeout waiting for `quit` command");
-    //             },
-    //         )
-    //         .await;
-    //     });
-    // }
+    #[test]
+    fn parsing_error() {
+        assert_eq!(
+            parse_cmd("play").finish(),
+            Err(nom::error::Error {
+                input: "play",
+                code: nom::error::ErrorKind::Tag,
+            })
+        );
+    }
 }
