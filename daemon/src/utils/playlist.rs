@@ -20,14 +20,14 @@ use crate::runner::Command;
 pub fn open(filename: &Path) -> std::io::Result<File> {
     // Fully qualified path
     if filename.is_file() {
-        return Ok(File::open(filename)?);
+        return File::open(filename);
     }
 
     // Relative to default with extension
     let mut real_path = SEARCH_PATH.to_path_buf();
     real_path.push(filename);
     if real_path.is_file() {
-        return Ok(File::open(&real_path)?);
+        return File::open(&real_path);
     }
 
     // Relative to default without extension
@@ -36,7 +36,7 @@ pub fn open(filename: &Path) -> std::io::Result<File> {
     let mut temp = real_path.into_os_string();
     temp.push(".playlist");
     let real_path = PathBuf::from(temp);
-    Ok(File::open(&real_path)?)
+    File::open(&real_path)
 }
 
 /// Parses a playlist file and generates a list of [`Command`]s.

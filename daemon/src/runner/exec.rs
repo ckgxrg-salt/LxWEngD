@@ -170,7 +170,7 @@ impl Execution {
                         Pid::from_raw(child.id().try_into().expect("PID should not be that large"));
 
                     kill(
-                        Pid::from_raw(pid.try_into().expect("pid won't go that large")),
+                        Pid::from_raw(pid.into()),
                         Signal::SIGTERM,
                     )
                     .map_err(|_| RunnerError::CleanupFail)

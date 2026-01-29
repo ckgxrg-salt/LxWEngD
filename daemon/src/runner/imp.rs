@@ -37,7 +37,7 @@ impl Runner<LxWEng> {
         monitor: String,
         path: PathBuf,
     ) -> Result<(Self, Arc<Mutex<RunnerHandle>>), RunnerError> {
-        let monitor = if monitor == NOMONITOR_INDICATOR.to_string() {
+        let monitor = if monitor == NOMONITOR_INDICATOR {
             None
         } else {
             Some(monitor)

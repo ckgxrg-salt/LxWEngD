@@ -4,20 +4,16 @@
 //! Unless `--standby` is passed in the arguments, the programs attempts to find the default
 //! playlist and runs it on all possible monitors.
 
-use smol::io::AsyncReadExt;
-use smol::io::AsyncWriteExt;
 use smol::lock::Mutex;
-use smol::net::unix::UnixListener;
-use smol::stream::StreamExt;
 use std::collections::HashMap;
 use std::env;
+use std::io::{Read, Write};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use thiserror::Error;
 
-use crate::backends::Backend;
 use crate::cli::{Config, configure};
 use crate::runner::{Action, Runner, RunnerHandle};
 use crate::utils::ipc::IPCCmd;
@@ -35,12 +31,17 @@ pub static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(find_cache_path);
 pub struct LxWEngd {
     runners: HashMap<String, Arc<Mutex<RunnerHandle>>>,
     socket: UnixListener,
+    socket_path: PathBuf,
 }
 
 #[derive(Debug, PartialEq, Error)]
 pub enum DaemonError {
     #[error("Failed to initialise socket")]
-    InitFailed,
+    InitSocket,
+    #[error("Failed to initialise logger")]
+    InitLogger,
+    #[error("Failed to initialise cache")]
+    InitCache,
     #[error("No such runner")]
     NoSuchRunner,
 }
@@ -88,12 +89,24 @@ fn setup_logger() -> Result<(), fern::InitError> {
 
 impl LxWEngd {
     pub fn init() -> Result<Self, DaemonError> {
-        let mut path = std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".to_string());
-        path.push_str("lxwengd.sock");
-        let socket = UnixListener::bind(path).map_err(|_| DaemonError::InitFailed)?;
+        let mut socket_path = std::env::var("XDG_RUNTIME_DIR").unwrap_or("/tmp".to_string());
+        socket_path.push_str("/lxwengd.sock");
+        let socket = UnixListener::bind(&socket_path).map_err(|_| DaemonError::InitSocket)?;
+
+        setup_logger().map_err(|_| DaemonError::InitLogger)?;
+
+        // If cache directory does not exist, create it
+        if !CACHE_PATH.is_dir() {
+            std::fs::create_dir(CACHE_PATH.as_path()).map_err(|err| {
+                log::error!("Failed to create cache directory: {err}");
+                DaemonError::InitCache
+            })?;
+        }
+
         Ok(Self {
             runners: HashMap::new(),
             socket,
+            socket_path: PathBuf::from(socket_path),
         })
     }
 
@@ -101,35 +114,25 @@ impl LxWEngd {
     ///
     /// # Errors
     /// Fatal errors that will cause the program to exit will be returned here.
-    pub async fn start<T: Backend>(&mut self) -> Result<(), DaemonError> {
-        setup_logger().map_err(|_| DaemonError::InitFailed)?;
-
-        // If cache directory does not exist, create it
-        if !CACHE_PATH.is_dir() {
-            std::fs::create_dir(CACHE_PATH.as_path()).map_err(|err| {
-                log::error!("Failed to create cache directory: {err}");
-                DaemonError::InitFailed
-            })?;
-        }
-
+    pub fn start(&mut self) {
         loop {
             let mut incoming = self.socket.incoming();
-            if let Some(Ok(mut conn)) = incoming.next().await {
+            if let Some(Ok(mut conn)) = incoming.next() {
                 let mut content = String::new();
-                let _ = conn.read_to_string(&mut content).await;
+                let _ = conn.read_to_string(&mut content);
                 let cmd = IPCCmd::from_str(&content);
                 match cmd {
                     Ok(IPCCmd::Load {
                         path,
                         monitor,
-                        paused,
-                        resume_mode,
+                        paused: _,
+                        resume_mode: _,
                     }) => {
-                        Self::try_cleanup(&mut self.runners).await;
+                        Self::try_cleanup(&mut self.runners);
                         if self.runners.contains_key(&monitor) {
                             let err = format!("Already have a runner on {monitor}");
                             log::error!("{err}");
-                            let _ = conn.write_all(&err.into_bytes()).await;
+                            let _ = conn.write_all(&err.into_bytes());
                         } else {
                             match Runner::new(monitor.clone(), path) {
                                 Ok((mut runner, handle)) => {
@@ -149,9 +152,12 @@ impl LxWEngd {
                     }
 
                     // TODO: Add resume support
-                    Ok(IPCCmd::Unload { no_save, monitor }) => {
+                    Ok(IPCCmd::Unload {
+                        no_save: _,
+                        monitor,
+                    }) => {
                         if let Some(handle) = self.runners.remove(&monitor) {
-                            handle.lock().await.interrupt(Action::Exit);
+                            let _ = handle.lock_blocking().interrupt(Action::Exit);
                         } else {
                             log::error!("No such runner")
                         }
@@ -159,40 +165,45 @@ impl LxWEngd {
 
                     Ok(IPCCmd::Pause { clear, monitor }) => {
                         Self::try_cleanup(&mut self.runners);
-                        self.forward_action(&monitor, Action::Pause(clear));
-                        conn.write_all(b"OK");
+                        if self.forward_action(&monitor, Action::Pause(clear)).is_ok() {
+                            let _ = conn.write_all(b"OK");
+                        } else {
+                            let _ = conn.write_all(b"No such runner");
+                        }
                     }
 
                     Ok(IPCCmd::Play { monitor }) => {
                         Self::try_cleanup(&mut self.runners);
-                        self.forward_action(&monitor, Action::Next);
-                        conn.write_all(b"OK");
+                        if self.forward_action(&monitor, Action::Next).is_ok() {
+                            let _ = conn.write_all(b"OK");
+                        } else {
+                            let _ = conn.write_all(b"No such runner");
+                        }
                     }
 
                     Ok(IPCCmd::Status) => {
                         Self::try_cleanup(&mut self.runners);
-                        let status = self.status_string().await;
-                        conn.write_all(&status.into_bytes());
+                        let status = self.status_string();
+                        let _ = conn.write_all(&status.into_bytes());
                     }
 
                     Ok(IPCCmd::Quit) => {
-                        conn.write_all(b"OK");
+                        let _ = conn.write_all(b"OK");
                         break;
                     }
 
-                    Ok(IPCCmd::Toggle { monitor }) => {
+                    Ok(IPCCmd::Toggle { monitor: _ }) => {
                         todo!()
                     }
 
                     Err(err) => {
                         log::error!("{err}");
-                        conn.write_all(&err.to_string().into_bytes());
+                        let _ = conn.write_all(&err.to_string().into_bytes());
                     }
                 }
             }
         }
-
-        Ok(())
+        std::fs::remove_file(&self.socket_path).expect("Failed to remove socket");
     }
 
     /// When [`Runner`]s exit, they set their state to [`State::Exited`].
@@ -200,10 +211,10 @@ impl LxWEngd {
     ///
     /// This method will remove [`Runner`]s with [`State::Exited`].
     /// This is intented to be invoked before accessing the runners map.
-    async fn try_cleanup(runners: &mut HashMap<String, Arc<Mutex<RunnerHandle>>>) {
+    fn try_cleanup(runners: &mut HashMap<String, Arc<Mutex<RunnerHandle>>>) {
         let mut result = HashMap::new();
         for (id, runner) in runners.drain() {
-            if !runner.lock().await.exited() {
+            if !runner.lock_blocking().exited() {
                 result.insert(id, runner);
             }
         }
@@ -211,20 +222,19 @@ impl LxWEngd {
     }
 
     /// Get all [`Runner`]s' status as a single [`String`].
-    async fn status_string(&self) -> String {
+    fn status_string(&self) -> String {
         let mut result = vec![];
         for (monitor, runner) in &self.runners {
-            let str = runner.lock().await.to_string();
-            result.push(format!("Runner {}\n{str}\n", monitor.to_string()));
+            let str = runner.lock_blocking().to_string();
+            result.push(format!("Runner {}\n{str}\n", monitor));
         }
         result.concat()
     }
 
     /// Forward an [`IPCCmd`] to the given [`Runner`] as an [`Action`].
-    async fn forward_action(&self, monitor: &str, action: Action) -> Result<(), DaemonError> {
+    fn forward_action(&self, monitor: &str, action: Action) -> Result<(), DaemonError> {
         let lock = self.runners.get(monitor).ok_or(DaemonError::NoSuchRunner)?;
-        lock.lock()
-            .await
+        lock.lock_blocking()
             .interrupt(action)
             // `.interrupt()` returns an error when the channel is closed
             // This means the runner no longer exists.

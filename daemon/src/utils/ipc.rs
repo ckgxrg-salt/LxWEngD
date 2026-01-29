@@ -3,7 +3,7 @@
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till1};
 use nom::character::complete::space0;
-use nom::combinator::{map, map_res, opt};
+use nom::combinator::{map, map_res};
 use nom::{Finish, IResult, Parser};
 use std::path::PathBuf;
 use std::str::FromStr;

@@ -151,7 +151,7 @@ impl Display for State {
                 if let Some(duration) = duration {
                     &format!("Paused - expected to take {:?}", duration)
                 } else {
-                    &format!("Paused")
+                    &"Paused".to_string()
                 }
             }
             State::Exited => "Exited",
