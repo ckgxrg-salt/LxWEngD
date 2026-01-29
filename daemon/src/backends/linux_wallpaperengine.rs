@@ -105,8 +105,8 @@ fn map_properties(properties: &HashMap<String, String>, cmd: &mut Command) {
             "scaling" => {
                 cmd.arg("--scaling").arg(value);
             }
-            "clamping" => {
-                cmd.arg("--clamping").arg(value);
+            "clamp" => {
+                cmd.arg("--clamp").arg(value);
             }
             _ => {
                 cmd.arg("--set-property").arg(format!("{key}={value}"));

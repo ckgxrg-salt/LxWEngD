@@ -217,6 +217,10 @@ impl LxWEngd {
                     }
 
                     Ok(IPCCmd::Quit) => {
+                        // Exit all runners to prevent orphan subprocesses.
+                        self.runners.keys().for_each(|k| {
+                            let _ = self.forward_action(k, Action::Exit);
+                        });
                         let _ = conn.write_all(b"OK");
                         break;
                     }

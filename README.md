@@ -43,7 +43,7 @@ Here's a list of general properties:
 - fullscreen-pause=\[true | false\], corresponding to `--no-fullscreen-pause`.
 - mouse=\[true | false\], corresponding to `--disable-mouse`.
 - scaling=\[stretch | fit | fill | default\], corresponding to `--scaling`.
-- clamping=\[clamp | border | repeat\], corresponding to `--clamping`.
+- clamp=\[clamp | border | repeat\], corresponding to `--clamp`.
 
 See `linux-wallpaperengine --list-properties <wallpaper id>` for a list of other properties specific to wallpapers.
 
