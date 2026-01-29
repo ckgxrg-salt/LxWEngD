@@ -1,4 +1,4 @@
-mod backends;
+mod backend;
 mod cli;
 mod daemon;
 mod runner;

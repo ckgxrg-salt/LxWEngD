@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     version = "1.1.0",
-    about = "A daemon that adds playlists to linux-wallpaperengine"
+    about = "A daemon that adds playlists to linux-wallpaperengine."
 )]
 struct Cli {
     #[arg(

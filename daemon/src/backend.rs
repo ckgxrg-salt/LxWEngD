@@ -3,21 +3,23 @@
 use smol::process::{Command, Stdio};
 use std::collections::HashMap;
 
-use crate::backends::Backend;
 use crate::daemon::{CACHE_PATH, CFG};
 
-pub struct LxWEng {
+pub struct Backend {
     monitor: Option<String>,
     default_props: HashMap<String, String>,
 }
 
-impl Backend for LxWEng {
-    fn get_name() -> String {
-        "linux-wallpaperengine".to_string()
+impl Backend {
+    pub fn new(monitor: Option<String>) -> Self {
+        Self {
+            monitor,
+            default_props: HashMap::new(),
+        }
     }
 
     /// Gets the [`Command`] to start `linux-wallpaperengine`.
-    fn get_sys_command(&self, name: &str, properties: &HashMap<String, String>) -> Command {
+    pub fn get_sys_command(&self, name: &str, properties: &HashMap<String, String>) -> Command {
         let mut sys_cmd = Command::new(CFG.binary.as_deref().unwrap_or("linux-wallpaperengine"));
         if let Some(value) = &CFG.assets_path {
             sys_cmd.arg("--assets-dir").arg(value);
@@ -35,15 +37,6 @@ impl Backend for LxWEng {
             .stderr(Stdio::null())
             .current_dir(CACHE_PATH.to_path_buf());
         sys_cmd
-    }
-}
-
-impl LxWEng {
-    pub fn new(monitor: Option<String>) -> Self {
-        Self {
-            monitor,
-            default_props: HashMap::new(),
-        }
     }
 
     /// Updates the held default properties.

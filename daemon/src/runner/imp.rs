@@ -11,7 +11,7 @@ use smol::lock::Mutex;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::backends::{Backend, LxWEng};
+use crate::backend::Backend;
 use crate::runner::exec::{ExecResult, Execution};
 use crate::runner::{
     Action, Command, NOMONITOR_INDICATOR, Runner, RunnerError, RunnerHandle, State,
@@ -25,8 +25,7 @@ enum LoopFlag {
     Nothing,
 }
 
-/// Currently only `linux-wallpaperengine` is supported.
-impl Runner<LxWEng> {
+impl Runner {
     /// Creates a new Runner that operates the given playlist.
     ///
     /// The special monitor name "NOMONITOR" is to indicate this runner has no associated monitor.
@@ -47,14 +46,13 @@ impl Runner<LxWEng> {
             Ok(file) => {
                 let (tx, rx) = smol::channel::unbounded();
                 let commands = playlist::parse(&path, &file).ok_or(RunnerError::InitFailed)?;
-                let backend = LxWEng::new(monitor);
+                let backend = Backend::new(monitor);
 
                 let handle = Arc::new(Mutex::new(RunnerHandle {
                     index: 0,
                     commands,
                     state: State::Ready,
                     path,
-                    backend_name: LxWEng::get_name(),
                     tx,
                 }));
 

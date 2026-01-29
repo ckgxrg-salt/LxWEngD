@@ -6,7 +6,7 @@ use smol::channel::Receiver;
 use smol::process::Child;
 use std::time::{Duration, Instant};
 
-use crate::backends::Backend;
+use crate::backend::Backend;
 use crate::runner::{Action, CmdDuration, Command, RunnerError};
 
 pub struct Execution {
@@ -44,7 +44,7 @@ impl Execution {
     /// Begins execution of a [`Command`].
     ///
     /// This immediately begins the execution, to get the result, `.await` on `.result()`.
-    pub fn begin<T: Backend>(cmd: Command, backend: &T, interrupt_rx: Receiver<Action>) -> Self {
+    pub fn begin(cmd: Command, backend: &Backend, interrupt_rx: Receiver<Action>) -> Self {
         match cmd {
             Command::Wallpaper(name, duration, properties) => {
                 let mut sys_cmd = backend.get_sys_command(&name, &properties);

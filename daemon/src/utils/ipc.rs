@@ -155,7 +155,7 @@ pub fn parse(input: &str) -> Result<IPCCmd, ParseError> {
         Err(nom::error::Error {
             input: _,
             code: nom::error::ErrorKind::Tag,
-        }) => Err(ParseError::InvalidArgument),
+        }) => Err(ParseError::NotEnoughArguments),
         Err(nom::error::Error {
             input: _,
             code: nom::error::ErrorKind::MapRes,
@@ -221,12 +221,11 @@ mod tests {
 
     #[test]
     fn parsing_error() {
+        assert_eq!(parse("play"), Err(ParseError::NotEnoughArguments));
         assert_eq!(
-            parse_cmd("play").finish(),
-            Err(nom::error::Error {
-                input: "play",
-                code: nom::error::ErrorKind::Tag,
-            })
+            parse("sleep definitelynottime"),
+            Err(ParseError::InvalidArgument)
         );
+        assert_eq!(parse("whoami"), Err(ParseError::CommandNotFound));
     }
 }

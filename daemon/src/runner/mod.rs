@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
-use crate::backends::Backend;
+use crate::backend::Backend;
 use exec::ExecInfo;
 
 /// The special monitor name to indicate this runner has no associated monitor.
@@ -27,15 +27,14 @@ pub struct RunnerHandle {
     state: State,
 
     path: PathBuf,
-    backend_name: String,
 
     tx: Sender<Action>,
 }
 
 /// Data structure of a runner.
-pub struct Runner<T: Backend> {
+pub struct Runner {
     internal: Arc<Mutex<RunnerHandle>>,
-    backend: T,
+    backend: Backend,
     rx: Receiver<Action>,
 }
 
@@ -58,8 +57,7 @@ impl Display for RunnerHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}: {}\n{} - Index {}",
-            self.backend_name,
+            "{}\n{} - Index {}",
             self.state,
             self.path.to_string_lossy(),
             self.index
@@ -67,7 +65,7 @@ impl Display for RunnerHandle {
     }
 }
 
-impl<T: Backend> Runner<T> {
+impl Runner {
     async fn next(&self) {
         self.internal.lock().await.index += 1;
     }
