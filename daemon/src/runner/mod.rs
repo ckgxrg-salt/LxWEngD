@@ -7,35 +7,81 @@ pub use actions::Action;
 pub use commands::{CmdDuration, Command};
 
 use smol::channel::{Receiver, Sender, TrySendError};
+use smol::lock::Mutex;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
 use crate::backends::Backend;
 use exec::ExecInfo;
 
-/// Data structure of a runner.
-pub struct Runner<T: Backend> {
+/// The special monitor name to indicate this runner has no associated monitor.
+const NOMONITOR_INDICATOR: &str = "NOMONITOR";
+
+pub struct RunnerHandle {
     index: usize,
     commands: Vec<Command>,
     state: State,
 
     path: PathBuf,
-
-    backend: T,
+    backend_name: String,
 
     tx: Sender<Action>,
+}
+
+/// Data structure of a runner.
+pub struct Runner<T: Backend> {
+    internal: Arc<Mutex<RunnerHandle>>,
+    backend: T,
     rx: Receiver<Action>,
 }
 
-impl<T: Backend> Runner<T> {
+impl RunnerHandle {
     /// Interrupts the runner to perform an [`Action`].
     ///
     /// # Errors
     /// See [`smol::channel::Sender::try_send`].
     pub fn interrupt(&mut self, action: Action) -> Result<(), TrySendError<Action>> {
         self.tx.try_send(action)
+    }
+
+    /// Returns whether this [`Runner`] has exited.
+    pub fn exited(&self) -> bool {
+        matches!(self.state, State::Exited)
+    }
+}
+
+impl Display for RunnerHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: {}\n{} - Index {}",
+            self.backend_name,
+            self.state,
+            self.path.to_string_lossy(),
+            self.index
+        )
+    }
+}
+
+impl<T: Backend> Runner<T> {
+    async fn next(&self) {
+        self.internal.lock().await.index += 1;
+    }
+
+    async fn prev(&self) {
+        self.internal.lock().await.index -= 1;
+    }
+
+    async fn goto(&self, index: usize) {
+        self.internal.lock().await.index = index;
+    }
+
+    async fn update_state(&self, state: State) {
+        self.internal.lock().await.state = state;
     }
 }
 
@@ -84,4 +130,32 @@ enum State {
     Running(ExecInfo),
     Paused(Option<Duration>),
     Exited,
+}
+
+impl Display for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            State::Ready => "Ready",
+            // TODO: Use humantime for formatting
+            State::Running(info) => {
+                if let Some(duration) = info.duration {
+                    &format!(
+                        "Running - expected to take {:?} - started at {:?}",
+                        duration, info.start
+                    )
+                } else {
+                    &format!("Running - started at {:?}", info.start)
+                }
+            }
+            State::Paused(duration) => {
+                if let Some(duration) = duration {
+                    &format!("Paused - expected to take {:?}", duration)
+                } else {
+                    &format!("Paused")
+                }
+            }
+            State::Exited => "Exited",
+        };
+        write!(f, "{string}")
+    }
 }

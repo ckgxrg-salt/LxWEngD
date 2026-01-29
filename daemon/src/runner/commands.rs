@@ -12,7 +12,8 @@ use nom::{Finish, IResult, Parser};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
-use thiserror::Error;
+
+use crate::utils::ParseError;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -46,22 +47,6 @@ impl FromStr for CmdDuration {
             }
         }
     }
-}
-
-#[derive(Debug, PartialEq, Error)]
-pub enum ParseError {
-    /// Indicates that this line is not a recognised command.
-    /// Blank lines are also treated as invalid commands.
-    #[error("Unrecognised command")]
-    CommandNotFound,
-    /// The command requires some arguments, but not enough are provided.
-    /// Note that if you use `#` to comment in the line, anything after that `#` will be ignored.
-    #[error("Not enough arguments")]
-    NotEnoughArguments,
-    /// The command requires an argument of a specific type, but the given one cannot be parsed
-    /// into that type.
-    #[error("Invalid arguments")]
-    InvalidArgument,
 }
 
 fn parse_comment(input: &str) -> IResult<&str, ()> {

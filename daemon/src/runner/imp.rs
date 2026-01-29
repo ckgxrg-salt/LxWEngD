@@ -7,11 +7,15 @@
 //! 4. Handle the [`ExecResult`] reported by the [`Execution`] future.
 
 use async_recursion::async_recursion;
+use smol::lock::Mutex;
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use crate::backends::LxWEng;
+use crate::backends::{Backend, LxWEng};
 use crate::runner::exec::{ExecResult, Execution};
-use crate::runner::{Action, Command, Runner, RunnerError, State};
+use crate::runner::{
+    Action, Command, NOMONITOR_INDICATOR, Runner, RunnerError, RunnerHandle, State,
+};
 use crate::utils::playlist;
 
 /// A flag to break the outer loop.
@@ -25,22 +29,43 @@ enum LoopFlag {
 impl Runner<LxWEng> {
     /// Creates a new Runner that operates the given playlist.
     ///
+    /// The special monitor name "NOMONITOR" is to indicate this runner has no associated monitor.
+    ///
     /// # Errors
     /// If the given playlist cannot be parsed, or is empty, this will return [`RunnerError::InitFailed`].
-    pub fn new(monitor: Option<String>, path: PathBuf) -> Result<Self, RunnerError> {
+    pub fn new(
+        monitor: String,
+        path: PathBuf,
+    ) -> Result<(Self, Arc<Mutex<RunnerHandle>>), RunnerError> {
+        let monitor = if monitor == NOMONITOR_INDICATOR.to_string() {
+            None
+        } else {
+            Some(monitor)
+        };
+
         match playlist::open(&path) {
             Ok(file) => {
                 let (tx, rx) = smol::channel::unbounded();
                 let commands = playlist::parse(&path, &file).ok_or(RunnerError::InitFailed)?;
-                Ok(Self {
-                    commands,
+                let backend = LxWEng::new(monitor);
+
+                let handle = Arc::new(Mutex::new(RunnerHandle {
                     index: 0,
+                    commands,
                     state: State::Ready,
                     path,
-                    backend: LxWEng::new(monitor),
+                    backend_name: LxWEng::get_name(),
                     tx,
-                    rx,
-                })
+                }));
+
+                Ok((
+                    Self {
+                        internal: handle.clone(),
+                        backend,
+                        rx,
+                    },
+                    handle,
+                ))
             }
             Err(err) => {
                 log::error!("{err}");
@@ -52,18 +77,24 @@ impl Runner<LxWEng> {
     /// The main runner task.
     pub async fn run(&mut self) {
         loop {
+            // Fetch current command,
             // By default go back to the beginning when reached the end
-            if self.index >= self.commands.len() {
-                self.index = 0;
-            }
-            // TODO: Possibly eliminate the Clone by Mutex?
-            let Some(current_cmd) = self.commands.get(self.index).cloned() else {
-                log::error!("Got invalid command");
-                self.index += 1;
-                continue;
+            let current_cmd = {
+                let mut internal = self.internal.lock().await;
+                if internal.index >= internal.commands.len() {
+                    internal.index = 0;
+                }
+                let Some(current_cmd) = internal.commands.get(internal.index).cloned() else {
+                    log::error!("Got invalid command");
+                    internal.index += 1;
+                    continue;
+                };
+                current_cmd
             };
+
+            // Process current command
             match current_cmd {
-                Command::Default(props) => self.backend.update_default_props(&props),
+                Command::Default(props) => self.backend.update_default_props(props),
                 Command::End => break,
                 cmd => match self.exec_async(cmd).await {
                     LoopFlag::Nothing => (),
@@ -71,16 +102,16 @@ impl Runner<LxWEng> {
                     LoopFlag::Continue => continue,
                 },
             }
-            self.index += 1;
+            self.next();
         }
-        self.state = State::Exited;
+        self.update_state(State::Exited);
     }
 
     /// Handles long-running tasks
     #[async_recursion]
     async fn exec_async(&mut self, cmd: Command) -> LoopFlag {
         let mut exec = Execution::begin(cmd, &self.backend, self.rx.clone());
-        self.state = State::Running(exec.info());
+        self.update_state(State::Running(exec.info()));
         let result = exec.result().await;
         let flag = match result {
             ExecResult::Elapsed => LoopFlag::Nothing,
@@ -88,11 +119,11 @@ impl Runner<LxWEng> {
             ExecResult::Interrupted(action) => match action {
                 Action::Next => LoopFlag::Nothing,
                 Action::Prev => {
-                    self.index -= 1;
+                    self.prev();
                     LoopFlag::Continue
                 }
                 Action::Goto(i) => {
-                    self.index = i;
+                    self.goto(i);
                     LoopFlag::Continue
                 }
                 Action::Exec(cmd) => {
@@ -103,7 +134,7 @@ impl Runner<LxWEng> {
                     if clear {
                         exec.cleanup();
                     }
-                    self.state = State::Paused(exec.remaining());
+                    self.update_state(State::Paused(exec.remaining()));
                     self.rx.recv().await;
                     return LoopFlag::Nothing;
                 }

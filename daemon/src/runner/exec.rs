@@ -4,11 +4,10 @@ use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
 use smol::channel::Receiver;
 use smol::process::Child;
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crate::backends::Backend;
-use crate::runner::{Action, CmdDuration, Command, Runner, RunnerError};
+use crate::runner::{Action, CmdDuration, Command, RunnerError};
 
 pub struct Execution {
     kind: ExecType,
@@ -28,8 +27,8 @@ enum ExecType {
 /// This struct contains status information for the current execution.
 #[derive(Clone)]
 pub struct ExecInfo {
-    duration: Option<Duration>,
-    start: Instant,
+    pub(super) duration: Option<Duration>,
+    pub(super) start: Instant,
 }
 
 pub enum ExecResult {

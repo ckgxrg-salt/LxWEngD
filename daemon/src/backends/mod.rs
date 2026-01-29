@@ -7,5 +7,6 @@ use std::collections::HashMap;
 
 /// General trait of a backend.
 pub trait Backend {
+    fn get_name() -> String;
     fn get_sys_command(&self, name: &str, properties: &HashMap<String, String>) -> Command;
 }

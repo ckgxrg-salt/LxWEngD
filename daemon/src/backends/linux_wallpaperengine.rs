@@ -12,6 +12,10 @@ pub struct LxWEng {
 }
 
 impl Backend for LxWEng {
+    fn get_name() -> String {
+        "linux-wallpaperengine".to_string()
+    }
+
     /// Gets the [`Command`] to start `linux-wallpaperengine`.
     fn get_sys_command(&self, name: &str, properties: &HashMap<String, String>) -> Command {
         let mut sys_cmd = Command::new(CFG.binary.as_deref().unwrap_or("linux-wallpaperengine"));
@@ -43,8 +47,8 @@ impl LxWEng {
     }
 
     /// Updates the held default properties.
-    pub fn update_default_props(&mut self, defaults: &HashMap<String, String>) {
-        defaults.clone_into(&mut self.default_props);
+    pub fn update_default_props(&mut self, defaults: HashMap<String, String>) {
+        self.default_props = defaults;
     }
 }
 

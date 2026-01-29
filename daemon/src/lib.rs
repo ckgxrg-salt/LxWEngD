@@ -1,4 +1,5 @@
 mod backends;
-pub mod daemon;
+mod cli;
+mod daemon;
 mod runner;
 mod utils;
