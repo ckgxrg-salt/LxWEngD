@@ -17,7 +17,7 @@
       devShells.${system}.default = pkgs.mkShell {
         name = "lxwengd";
 
-        buildInputs = with pkgs.xorg; [
+        buildInputs = with pkgs; [
           libxcb
           libXrandr
         ];
@@ -30,6 +30,7 @@
           rustfmt
           deadnix
           nixfmt
+          lldb
 
           linux-wallpaperengine
         ];

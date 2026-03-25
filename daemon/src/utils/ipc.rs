@@ -28,11 +28,11 @@ pub enum IPCCmd {
     /// resume file should *NOT* be generated.
     Unload { no_save: bool, monitor: String },
 
+    /// Resumes the given runner.
+    Play { monitor: String },
     /// Pauses the given runner, the bool argument indicates whether `linux-wallpaperengine` should
     /// be terminated or kept.
     Pause { clear: bool, monitor: String },
-    /// Resumes the given runner.
-    Play { monitor: String },
     /// Toggles play/pause of the given runner.
     Toggle { monitor: String },
 

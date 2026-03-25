@@ -16,7 +16,7 @@ repository = "https://codeberg.org/ckgxrg/LxWEngd"
 [workspace.dependencies]
 async-recursion = "1.1.1"
 clap = { version = "4.5.43", features = ["derive"] }
-duration-str = "0.18.0"
+duration-str = "0.21.0"
 fern = "0.7.1"
 log = "0.4.26"
 nix = { version = "0.31.1", features = ["signal"] }
