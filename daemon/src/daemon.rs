@@ -8,6 +8,7 @@ use smol::lock::Mutex;
 use std::collections::HashMap;
 use std::env;
 use std::io::{BufRead, BufReader, Write};
+use std::net::Shutdown;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -18,6 +19,7 @@ use crate::cli::{Config, configure};
 use crate::runner::NOMONITOR_INDICATOR;
 use crate::runner::{Action, Runner, RunnerHandle};
 use crate::utils::ipc::IPCCmd;
+use crate::utils::state::load_state;
 
 pub static CFG: LazyLock<Config> = LazyLock::new(configure);
 pub static SEARCH_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -129,7 +131,13 @@ impl LxWEngd {
                 .default_monitor
                 .clone()
                 .unwrap_or(NOMONITOR_INDICATOR.to_string());
-            match Runner::new(monitor.clone(), CFG.default_playlist.clone()) {
+            let index = if let Ok(index) = load_state(&CFG.default_playlist) {
+                index
+            } else {
+                log::error!("Failed to resume state");
+                0
+            };
+            match Runner::from_index(monitor.clone(), CFG.default_playlist.clone(), index) {
                 Ok((mut runner, handle)) => {
                     // One runner runs on one monitor
                     self.runners.insert(monitor, handle);
@@ -152,8 +160,7 @@ impl LxWEngd {
                     Ok(IPCCmd::Load {
                         path,
                         monitor,
-                        paused: _,
-                        resume_mode: _,
+                        resume,
                     }) => {
                         Self::try_cleanup(&mut self.runners);
                         if self.runners.contains_key(&monitor) {
@@ -161,7 +168,17 @@ impl LxWEngd {
                             log::error!("{err}");
                             let _ = conn.write_all(&err.into_bytes());
                         } else {
-                            match Runner::new(monitor.clone(), path) {
+                            let index = if resume {
+                                if let Ok(index) = load_state(&path) {
+                                    index
+                                } else {
+                                    log::error!("Failed to resume state");
+                                    0
+                                }
+                            } else {
+                                0
+                            };
+                            match Runner::from_index(monitor.clone(), path, index) {
                                 Ok((mut runner, handle)) => {
                                     // One runner runs on one monitor
                                     self.runners.insert(monitor, handle);
@@ -179,14 +196,19 @@ impl LxWEngd {
                         }
                     }
 
-                    // TODO: Add resume support
-                    Ok(IPCCmd::Unload {
-                        no_save: _,
-                        monitor,
-                    }) => {
+                    Ok(IPCCmd::Unload { no_save, monitor }) => {
                         Self::try_cleanup(&mut self.runners);
-                        if self.forward_action(&monitor, Action::Exit).is_ok() {
-                            let _ = conn.write_all(b"OK");
+                        let lock = self.runners.get(&monitor);
+                        if let Some(lock) = lock {
+                            let runner = lock.lock_blocking();
+                            if !no_save {
+                                runner.save();
+                            }
+                            if self.forward_action(&monitor, Action::Exit).is_ok() {
+                                let _ = conn.write_all(b"OK");
+                            } else {
+                                let _ = conn.write_all(b"No such runner");
+                            }
                         } else {
                             let _ = conn.write_all(b"No such runner");
                         }
@@ -233,6 +255,9 @@ impl LxWEngd {
                         log::error!("{err}");
                         let _ = conn.write_all(&err.to_string().into_bytes());
                     }
+                }
+                if conn.shutdown(Shutdown::Both).is_err() {
+                    log::error!("Failed to properly shut down connection")
                 }
             }
         }

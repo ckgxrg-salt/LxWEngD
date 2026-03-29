@@ -26,15 +26,16 @@ enum LoopFlag {
 }
 
 impl Runner {
-    /// Creates a new Runner that operates the given playlist.
+    /// Creates a new Runner that operates the given playlist, whose initial index is given.
     ///
     /// The special monitor name "NOMONITOR" is to indicate this runner has no associated monitor.
     ///
     /// # Errors
     /// If the given playlist cannot be parsed, or is empty, this will return [`RunnerError::InitFailed`].
-    pub fn new(
+    pub fn from_index(
         monitor: String,
         path: PathBuf,
+        index: usize,
     ) -> Result<(Self, Arc<Mutex<RunnerHandle>>), RunnerError> {
         let monitor = if monitor == NOMONITOR_INDICATOR {
             None
@@ -49,7 +50,7 @@ impl Runner {
                 let backend = Backend::new(monitor);
 
                 let handle = Arc::new(Mutex::new(RunnerHandle {
-                    index: 0,
+                    index,
                     commands,
                     state: State::Ready,
                     path,

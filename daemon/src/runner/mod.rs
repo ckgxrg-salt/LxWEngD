@@ -10,12 +10,12 @@ use smol::channel::{Receiver, Sender, TrySendError};
 use smol::lock::Mutex;
 use std::fmt::Display;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
 use crate::backend::Backend;
+use crate::utils::state::save_state;
 use exec::ExecInfo;
 
 /// The special monitor name to indicate this runner has no associated monitor.
@@ -50,6 +50,13 @@ impl RunnerHandle {
     /// Returns whether this [`Runner`] has exited.
     pub fn exited(&self) -> bool {
         matches!(self.state, State::Exited)
+    }
+
+    /// Saves the state of this runner for later resume.
+    pub fn save(&self) {
+        if save_state(self.index, &self.path).is_err() {
+            log::error!("Unable to save state");
+        }
     }
 }
 
@@ -93,32 +100,6 @@ pub enum RunnerError {
     EngineDied,
     #[error("Failed to cleanup")]
     CleanupFail,
-}
-
-/// How should a runner treat state files on startup.
-#[derive(Debug, PartialEq)]
-pub enum ResumeMode {
-    /// Ignore the state file for the playlist.
-    Ignore,
-    /// Ignore and delete the state file for the playlist.
-    IgnoreDel,
-    /// Apply but delete the state file for the playlist.
-    ApplyDel,
-    /// Apply the state file for the playlist. This is the default behaviour.
-    Apply,
-}
-
-impl FromStr for ResumeMode {
-    type Err = RunnerError;
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "ignore" => Ok(Self::Ignore),
-            "ignoredel" => Ok(Self::IgnoreDel),
-            "applydel" => Ok(Self::ApplyDel),
-            "apply" => Ok(Self::Apply),
-            _ => Err(Self::Err::InitFailed),
-        }
-    }
 }
 
 /// Runner's state

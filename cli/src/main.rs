@@ -93,20 +93,20 @@ fn main() {
             resume,
             path,
         } => format!(
-            "load {} {} {} {}",
+            "load {} {} {} {}\n",
             path.to_string_lossy(),
             monitor,
             paused,
             resume
         ),
-        Command::Stop { no_resume } => format!("unload {no_resume} {monitor}"),
+        Command::Stop { no_resume } => format!("unload {no_resume} {monitor}\n"),
 
-        Command::Play => format!("play {monitor}"),
-        Command::Pause { clear } => format!("pause {clear} {monitor}"),
-        Command::Toggle { clear } => format!("toggle {clear} {monitor}"),
+        Command::Play => format!("play {monitor}\n"),
+        Command::Pause { clear } => format!("pause {clear} {monitor}\n"),
+        Command::Toggle { clear } => format!("toggle {clear} {monitor}\n"),
 
-        Command::Status => String::from("status"),
-        Command::Quit => String::from("quit"),
+        Command::Status => String::from("status\n"),
+        Command::Quit => String::from("quit\n"),
     };
     conn.write_all(msg.as_bytes()).unwrap();
 

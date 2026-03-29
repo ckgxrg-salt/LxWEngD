@@ -8,7 +8,6 @@ use nom::{Finish, IResult, Parser};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::runner::ResumeMode;
 use crate::utils::ParseError;
 
 /// Possible daemon commands.
@@ -21,8 +20,7 @@ pub enum IPCCmd {
     Load {
         path: PathBuf,
         monitor: String,
-        paused: bool,
-        resume_mode: ResumeMode,
+        resume: bool,
     },
     /// Destroys the runner with the given name, the bool argument indicates whether a
     /// resume file should *NOT* be generated.
@@ -110,21 +108,14 @@ fn parse_load(input: &str) -> IResult<&str, IPCCmd> {
     let (input, _) = space0(input)?;
     let (input, monitor) = take_till1(|c: char| c.is_whitespace())(input)?;
     let (input, _) = space0(input)?;
-    let (input, paused) =
+    let (input, resume) =
         map_res(take_till1(|c: char| c.is_whitespace()), str::parse::<bool>).parse(input)?;
-    let (input, _) = space0(input)?;
-    let (input, resume_mode) = map_res(
-        take_till1(|c: char| c.is_whitespace()),
-        str::parse::<ResumeMode>,
-    )
-    .parse(input)?;
     Ok((
         input,
         IPCCmd::Load {
             path,
             monitor: monitor.to_string(),
-            paused,
-            resume_mode,
+            resume,
         },
     ))
 }
@@ -186,8 +177,7 @@ mod tests {
                 IPCCmd::Load {
                     path: PathBuf::from("/tmp/test.playlist"),
                     monitor: "eDP-1".to_string(),
-                    paused: false,
-                    resume_mode: ResumeMode::IgnoreDel
+                    resume: false
                 }
             ))
         );

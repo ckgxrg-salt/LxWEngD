@@ -15,8 +15,6 @@ pub enum StateError {
     StoreError,
     /// Failed to read resume data.
     LoadError,
-    /// Stored line number exceeds current max line number.
-    ExceedMaxLine,
 }
 
 /// Saves the line number to a File.
@@ -44,7 +42,7 @@ pub fn save_state(line: usize, path: &Path) -> Result<(), StateError> {
 /// This function will check whether the stored line number exceeds the current total number of
 /// lines, which may happen if the playlist file is modified.
 /// Returns a [`ResumeError`] in this case.
-pub fn load_state(path: &Path, max: usize) -> Result<usize, StateError> {
+pub fn load_state(path: &Path) -> Result<usize, StateError> {
     let mut temp = path.to_path_buf().into_os_string();
     temp.push(".state");
 
@@ -52,14 +50,8 @@ pub fn load_state(path: &Path, max: usize) -> Result<usize, StateError> {
     let mut buffer = [0_u8; std::mem::size_of::<usize>()];
     file.read_exact(&mut buffer)
         .map_err(|_| StateError::LoadError)?;
-    std::fs::remove_file(temp).map_err(|_| StateError::LoadError)?;
     let line = usize::from_be_bytes(buffer);
-
-    if line <= max {
-        Ok(line)
-    } else {
-        Err(StateError::ExceedMaxLine)
-    }
+    Ok(line)
 }
 
 #[cfg(test)]
